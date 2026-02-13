@@ -16,17 +16,17 @@ type Props = {
 export default function ActivityTimer({ skillId }: Props) {
   const { activeSession, startSession, pauseSession, resumeSession, stopSession } = useActivityStore()
   const toast = useToast()
-  const [activityName, setActivityName] = useState('')
+  const [activityName, setActivityName] = useState('Practice')
   const [notes, setNotes] = useState('')
   const [elapsedTime, setElapsedTime] = useState(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   
   const isActiveForThisSkill = activeSession?.skillId === skillId
-  const isActive = activeSession?.status === 'active'
+  const isActive = activeSession?.status === 'ACTIVE'
   
   // Update elapsed time every second for active session
   useEffect(() => {
-    if (activeSession?.status === 'active' && activeSession.startedAt) {
+    if (activeSession?.status === 'ACTIVE' && activeSession.startedAt) {
       // Update immediately
       const updateTime = () => {
         const duration = calculateDuration(
@@ -40,10 +40,18 @@ export default function ActivityTimer({ skillId }: Props) {
       timerRef.current = setInterval(updateTime, 1000)
       
       return () => {
-        if (timerRef.current) clearInterval(timerRef.current)
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
+      }
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
       }
     }
-  }, [activeSession?.status, activeSession?.startedAt, activeSession?.pausedDuration])
+  }, [activeSession])
   
   const handleStart = () => {
     if (!activityName.trim()) {

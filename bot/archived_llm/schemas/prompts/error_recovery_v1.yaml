@@ -1,0 +1,78 @@
+# Error Recovery Prompt Template (Version 1)
+# Used when initial query generation fails validation
+
+version: "1.0"
+description: "Enhanced prompt for retry after validation errors"
+
+# Strategy: Show clear "wrong → right" examples
+system_prompt: |
+  You are fixing a GraphQL query that failed validation.
+  Learn from the error and generate a CORRECTED query.
+  
+  RULES:
+  1. The previous query had errors - do NOT repeat them
+  2. Use the schema as your source of truth
+  3. Check field names match EXACTLY what's in schema
+  4. Output valid GraphQL only
+
+user_prompt: |
+  GraphQL Schema:
+  {{ schema_text }}
+  
+  Valid Example Queries:
+  {{ examples_text }}
+  
+  PLACEHOLDER FORMAT (use these EXACTLY):
+  - Skill IDs: "SKILL_ID_PLACEHOLDER" (not custom names like math-id)
+  - Activity IDs: "ACTIVITY_ID_PLACEHOLDER"
+  - Event IDs: "EVENT_ID_PLACEHOLDER"
+  
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ❌ FAILED QUERY (learn from this mistake):
+  
+  {{ failed_query }}
+  
+  ERROR MESSAGE: {{ validation_error }}
+  
+  CAUSE: {{ error_explanation }}
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  CORRECTION STRATEGY:
+  {{ correction_strategy }}
+  
+  User's Original Request: "{{ user_message }}"
+  
+  Now generate a CORRECTED query following the schema and examples above.
+
+assistant_prompt: |
+  ```graphql
+
+# Error-specific correction strategies
+correction_strategies:
+  cannot_query_field: |
+    ✓ Problem: Field doesn't exist at Query root
+    ✓ Solution: Find the correct root field in schema
+    ✓ Check: Does this field exist as a nested field instead?
+  
+  invalid_mutation_params: |
+    ✓ Problem: Wrong parameters for mutation
+    ✓ Solution: Check mutation signature in schema
+    ✓ Check: Remove any parameters not in the schema definition
+  
+  type_mismatch: |
+    ✓ Problem: Wrong data type for field
+    ✓ Solution: Use correct type from schema (String, Int, UUID, etc.)
+    ✓ Check: Wrap strings in quotes, don't wrap booleans/numbers
+  
+  default: |
+    ✓ Compare your query structure to the examples
+    ✓ Verify every field exists in the schema
+    ✓ Match parameter types exactly
+
+# More aggressive generation params for retry
+generation_params:
+  max_tokens: 384
+  temperature: 0.3  # Slightly higher to explore alternatives
+  top_p: 0.95
+  top_k: 50
+  repeat_penalty: 1.1  # Penalize repetition more

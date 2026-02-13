@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@urql/exchange-auth": "^3.0.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.33.0",
+    "graphql": "^16.12.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.1",
     "react": "19.2.3",
@@ -20,6 +22,7 @@
     "react-dom": "19.2.3",
     "react-hook-form": "^7.71.1",
     "rrule": "^2.8.1",
+    "urql": "^5.0.1",
     "vite": "^7.3.1",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"

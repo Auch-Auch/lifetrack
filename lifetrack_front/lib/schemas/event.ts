@@ -10,9 +10,9 @@ import { z } from 'zod';
 // Event Schemas
 // ============================================================================
 
-export const eventTypeSchema = z.enum(['activity', 'learning', 'meeting', 'reminder', 'custom']);
+export const eventTypeSchema = z.enum(['ACTIVITY', 'LEARNING', 'MEETING', 'REMINDER', 'CUSTOM']);
 
-export const recurrencePatternSchema = z.enum(['none', 'daily', 'weekly', 'monthly', 'custom']);
+export const recurrencePatternSchema = z.enum(['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM']);
 
 export const notificationChannelSchema = z.enum(['browser', 'telegram', 'both']);
 
@@ -42,7 +42,7 @@ const baseEventSchema = z.object({
   
   allDay: z.boolean().default(false),
   
-  recurrence: recurrencePatternSchema.default('none'),
+  recurrence: recurrencePatternSchema.default('NONE'),
   
   recurrenceRule: z.string()
     .optional(),
@@ -93,8 +93,8 @@ export const eventSchema = baseEventSchema.refine(
   }
 ).refine(
   (data) => {
-    // If recurrence is set (not 'none'), recurrenceRule should be provided
-    if (data.recurrence !== 'none' && !data.recurrenceRule) {
+    // If recurrence is set (not 'NONE'), recurrenceRule should be provided
+    if (data.recurrence !== 'NONE' && !data.recurrenceRule) {
       return false;
     }
     return true;

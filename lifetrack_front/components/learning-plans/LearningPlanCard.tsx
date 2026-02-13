@@ -6,8 +6,9 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LearningPlan } from '../../lib/events';
+import type { Skill } from '../../lib/skills';
 import { calculatePlanProgress } from '../../lib/events';
 import { useLearningPlanStore } from '../../stores/learningPlanStore';
 import { getSkills } from '../../lib/skills';
@@ -47,9 +48,15 @@ export default function LearningPlanCard({
   compact = false,
 }: LearningPlanCardProps) {
   const deletePlan = useLearningPlanStore((state) => state.deletePlan);
-  const syncWithCalendar = useLearningPlanStore((state) => state.syncWithCalendar);
+  const generateSchedule = useLearningPlanStore((state) => state.generateSchedule);
   
-  const skills = getSkills();
+  const [skills, setSkills] = useState<Skill[]>([]);
+  
+  // Load skills
+  useEffect(() => {
+    getSkills().then(setSkills);
+  }, []);
+  
   const planSkills = skills.filter((s) => plan.skillIds.includes(s.id));
   const progress = calculatePlanProgress(plan);
   
@@ -71,7 +78,7 @@ export default function LearningPlanCard({
   
   const handleResync = () => {
     if (confirm('This will regenerate all auto-scheduled events for this plan. Continue?')) {
-      syncWithCalendar(plan.id);
+      generateSchedule(plan.id);
     }
   };
   

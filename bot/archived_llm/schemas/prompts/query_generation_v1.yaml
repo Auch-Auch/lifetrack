@@ -1,0 +1,95 @@
+# GraphQL Query Generation Prompt Template (Version 1)
+# Optimized for Qwen 2.5 Coder model
+
+version: "1.0"
+description: "Main prompt for generating GraphQL queries from natural language"
+model_optimizations:
+  - "Uses ChatML format for Qwen 2.5"
+  - "Low temperature (0.2) for precise code generation"
+  - "Clear examples with explicit intent comments"
+
+# System prompt - Sets the task and output format
+system_prompt: |
+  You are a GraphQL query generator. Your task is to convert user requests into valid GraphQL queries.
+  
+  CRITICAL RULES:
+  1. Output ONLY GraphQL code - no explanations, no markdown, no extra text
+  2. Use EXACTLY the schema fields provided - do not invent fields
+  3. Follow the example patterns precisely
+  4. If unclear, output: CLARIFY: <your question>
+
+# Main template using Jinja2
+user_prompt: |
+  Available GraphQL Schema:
+  {{ schema_text }}
+
+  Example Queries (follow these patterns EXACTLY):
+  {{ examples_text }}
+  
+  CRITICAL - Placeholder Format:
+  - For skill IDs, use EXACTLY: "SKILL_ID_PLACEHOLDER" (not math-skill-id, not python-id, etc.)
+  - For activity IDs, use EXACTLY: "ACTIVITY_ID_PLACEHOLDER"
+  - Do NOT invent custom placeholder names
+  - These placeholders are automatically resolved by the system
+  {% if validation_error %}
+  
+  ❌ PREVIOUS ATTEMPT FAILED:
+  
+  You generated this INVALID query:
+  ```
+  {{ failed_query }}
+  ```
+  
+  ERROR: {{ validation_error }}
+  
+  **FIX REQUIRED:**
+  {{ error_guidance }}
+  - Check the available root queries/mutations in the schema above
+  - Generate a COMPLETELY DIFFERENT query that actually exists in the schema
+  - Follow the examples EXACTLY - don't add extra parameters
+  {% endif %}
+
+  Now, generate a GraphQL query for this request:
+  "{{ user_message }}"
+  
+  Output only the GraphQL query code, nothing else.
+
+# Assistant prompt prefix - guides the start of response
+assistant_prompt: |
+  ```graphql
+
+# Stop sequences for generation
+stop_sequences:
+  - "```"
+  - "<|im_end|>"
+  - "<|im_start|>"
+
+# Generation parameters
+generation_params:
+  max_tokens: 384
+  temperature: 0.2
+  top_p: 0.95
+  top_k: 50
+  repeat_penalty: 1.05
+
+# Validation error guidance templates
+error_guidance:
+  startSession: |
+    
+    **IMPORTANT for startSession mutation:**
+    - ONLY accepts TWO parameters: skillId (UUID) and name (String)
+    - Do NOT add: skill, startedAt, duration, date, or any nested objects
+    - Use exact placeholder: skillId: "SKILL_ID_PLACEHOLDER" (not math-skill-id or python-id)
+    - Example: startSession(skillId: "SKILL_ID_PLACEHOLDER" name: "Session name")
+  
+  cannot_query_field: |
+    
+    - The field "{{ field_name }}" does NOT exist at the root Query level
+    - For calendar/schedule requests, use "events" query instead
+    - For learning plan schedules, use "learningPlans" query and access nested "schedule" field
+  
+  default: |
+    
+    - Review the schema carefully
+    - Match the structure from similar examples
+    - Ensure all fields exist in the schema

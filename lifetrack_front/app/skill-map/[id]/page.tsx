@@ -1,4 +1,7 @@
+'use client'
+import { useState, useEffect } from 'react'
 import { getSkillById } from '../../../lib/skills'
+import type { Skill } from '../../../lib/skills'
 import ActivityTimer from '../../../components/ActivityTimer'
 import ActivityHeatmap from '../../../components/ActivityHeatmap'
 import PageHeader from '@/components/ui/PageHeader'
@@ -6,14 +9,31 @@ import { Card, CardContent } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
+import { use } from 'react'
 
 type Props = {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
-export default async function SkillPage({ params }: Props) {
-  params = await params
-  const skill = getSkillById(params.id)
+export default function SkillPage({ params }: Props) {
+  const { id } = use(params)
+  const [skill, setSkill] = useState<Skill | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getSkillById(id).then((data) => {
+      setSkill(data)
+      setLoading(false)
+    })
+  }, [id])
+
+  if (loading) {
+    return (
+      <main className="container mx-auto p-6">
+        <div className="text-center py-8">Loading...</div>
+      </main>
+    )
+  }
 
   if (!skill) {
     return (

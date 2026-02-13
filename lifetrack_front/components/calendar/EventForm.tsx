@@ -7,11 +7,12 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { eventSchema, type EventFormData } from '../../lib/schemas/event';
 import type { Event, EventType, RecurrencePattern } from '../../lib/events';
+import type { Skill } from '../../lib/skills';
 import { useEventStore } from '../../stores/eventStore';
 import { getSkills } from '../../lib/skills';
 import { useActivityStore } from '../../stores/activityStore';
@@ -47,8 +48,21 @@ export default function EventForm({
   
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
   
-  const skills = getSkills();
+  // Load skills
+  useEffect(() => {
+    getSkills().then(setSkills);
+  }, []);
+  
+  // Convert RFC3339 to datetime-local format
+  const convertToDateTimeLocal = (rfc3339: string) => {
+    if (!rfc3339) return '';
+    // RFC3339: "2026-02-11T10:00:00Z" or "2026-02-11T10:00:00+00:00"
+    // datetime-local needs: "2026-02-11T10:00"
+    // Simply remove the seconds and timezone parts
+    return rfc3339.slice(0, 16);
+  };
   
   // Initialize form with react-hook-form + zod
   const {
@@ -61,11 +75,27 @@ export default function EventForm({
     resolver: zodResolver(eventSchema) as never,
     defaultValues: event
       ? {
-          ...event,
+          title: event.title,
+          description: event.description,
+          type: event.type,
+          startTime: convertToDateTimeLocal(event.startTime),
+          endTime: convertToDateTimeLocal(event.endTime),
+          allDay: event.allDay,
+          location: event.location,
+          color: event.color,
+          recurrence: event.recurrence,
+          recurrenceRule: event.recurrenceRule,
+          recurrenceEnd: event.recurrenceEnd ? convertToDateTimeLocal(event.recurrenceEnd) : undefined,
+          skillId: event.skillId,
+          notifications: event.notifications ? {
+            enabled: event.notifications.enabled,
+            channels: event.notifications.channels as ('browser' | 'telegram' | 'both')[],
+            reminderMinutes: event.notifications.reminderMinutes,
+          } : undefined,
         }
       : {
           title: '',
-          type: 'custom',
+          type: 'CUSTOM',
           startTime: initialDate
             ? initialDate.toISOString().slice(0, 16)
             : new Date().toISOString().slice(0, 16),
@@ -75,11 +105,11 @@ export default function EventForm({
                 .slice(0, 16)
             : new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
           allDay: false,
-          recurrence: 'none',
+          recurrence: 'NONE',
           notifications: {
             enabled: true,
-            channels: ['browser'],
-            reminderMinutes: [15],
+            channels: ['browser' as const],
+            reminderMinutes: [10],
           },
         },
   });
@@ -87,15 +117,31 @@ export default function EventForm({
   const watchType = watch('type');
   const watchColor = watch('color');
   
+  // Convert datetime-local format to RFC3339
+  const convertToRFC3339 = (dateTimeLocal: string) => {
+    if (!dateTimeLocal) return dateTimeLocal;
+    // datetime-local format: "2026-02-13T14:30"
+    // Add seconds and 'Z' for UTC: "2026-02-13T14:30:00Z"
+    return `${dateTimeLocal}:00Z`;
+  };
+  
   // Handle form submission
   const onSubmit = async (data: Partial<EventFormData>) => {
     try {
+      // Convert datetime-local format to RFC3339 for backend
+      const submitData = {
+        ...data,
+        startTime: data.startTime ? convertToRFC3339(data.startTime) : undefined,
+        endTime: data.endTime ? convertToRFC3339(data.endTime) : undefined,
+        recurrenceEnd: data.recurrenceEnd ? convertToRFC3339(data.recurrenceEnd) : undefined,
+      };
+      
       if (event) {
         // Update existing event
-        updateEvent(event.id, data);
+        updateEvent(event.id, submitData);
       } else {
-        // Create new event
-        createEvent(data);
+        // Create new event - validate required fields
+        createEvent(submitData as any);
       }
       
       onSuccess?.();
@@ -104,22 +150,19 @@ export default function EventForm({
     }
   };
   
-  // Event type options
+  // Event type options - only LEARNING and CUSTOM
   const eventTypes: { value: EventType; label: string; icon: string }[] = [
-    { value: 'activity', label: 'Activity', icon: '🎯' },
-    { value: 'learning', label: 'Learning', icon: '📚' },
-    { value: 'meeting', label: 'Meeting', icon: '👥' },
-    { value: 'reminder', label: 'Reminder', icon: '⏰' },
-    { value: 'custom', label: 'Custom', icon: '📌' },
+    { value: 'LEARNING', label: 'Learning', icon: '📚' },
+    { value: 'CUSTOM', label: 'Custom', icon: '📌' },
   ];
   
   // Recurrence options
   const recurrenceOptions: { value: RecurrencePattern; label: string }[] = [
-    { value: 'none', label: 'Does not repeat' },
-    { value: 'daily', label: 'Daily' },
-    { value: 'weekly', label: 'Weekly' },
-    { value: 'monthly', label: 'Monthly' },
-    { value: 'custom', label: 'Custom...' },
+    { value: 'NONE', label: 'Does not repeat' },
+    { value: 'DAILY', label: 'Daily' },
+    { value: 'WEEKLY', label: 'Weekly' },
+    { value: 'MONTHLY', label: 'Monthly' },
+    { value: 'CUSTOM', label: 'Custom...' },
   ];
   
   return (
@@ -136,7 +179,7 @@ export default function EventForm({
       {/* Event Type */}
       <div>
         <label className="block text-sm font-medium mb-2">Type</label>
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {eventTypes.map((type) => (
             <button
               key={type.value}
@@ -316,7 +359,7 @@ export default function EventForm({
               {...register('notifications.reminderMinutes.0', {
                 valueAsNumber: true,
               })}
-              placeholder="15"
+              placeholder="10"
               min="0"
               max="10080"
             />

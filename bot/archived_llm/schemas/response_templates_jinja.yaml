@@ -1,0 +1,188 @@
+# Response templates for bot intents
+# Jinja2 syntax with custom filters
+
+query_schedule: |
+  📅 **Your Schedule:**
+  {% if data.events is defined and data.events|length > 0 %}
+  {% for event in data.events %}
+  • **{{ event.startTime|format_time }}** - {{ event.title }} {{ event.type|event_icon }}
+  {% if event.description %}  _{{ event.description|truncate(50) }}_{% endif %}
+  {% endfor %}
+  {% else %}
+  No events scheduled for {{ params.date|default('today') }}.
+  {% endif %}
+
+start_session: |
+  ⏱️ **Session Started!**
+  
+  Activity: {{ data.name|default('Session') }}
+  Skill: {{ data.skill_name|default(data.skill.name if data.skill else 'Unknown') }}
+  {% if data.skill_was_created %}
+  📚 Created new skill: {{ data.skill_name }}
+  {% endif %}
+  
+  Good luck! Message me when you're done.
+
+stop_session: |
+  ✅ **Session Completed!**
+  
+  Activity: {{ data.name|default('Session') }}
+  Duration: {{ data.duration|format_duration }}
+  {% if data.notes %}
+  Notes: {{ data.notes }}
+  {% endif %}
+  
+  Great work! Keep it up! 💪
+
+end_session: |
+  ✅ **Session Ended!**
+  
+  Total time: {{ data.duration|format_duration }}
+  
+  Well done!
+
+get_stats: |
+  📊 **Your Activity Statistics**
+  {% set stats = data.activityStats if data.activityStats is defined else data %}
+  
+  🎯 Total: {{ stats.totalActivities }} {{ stats.totalActivities|pluralize('activity', 'activities') }}
+  ⏱️ Time: {{ stats.totalHours }}h ({{ stats.totalMinutes }}m)
+  {% if stats.skillBreakdown and stats.skillBreakdown|length > 0 %}
+  
+  📚 **By Skill:**
+  {% for breakdown in stats.skillBreakdown[:5] %}
+  • {{ breakdown.skillName }}: {{ breakdown.activityCount }} {{ breakdown.activityCount|pluralize('activity', 'activities') }}, {{ breakdown.totalHours|round(1) }}h
+  {% endfor %}
+  {% if stats.skillBreakdown|length > 5 %}
+  _...and {{ stats.skillBreakdown|length - 5 }} more skills_
+  {% endif %}
+  {% endif %}
+  
+  {% if stats.totalActivities > 0 %}💪 Keep up the great work!{% else %}💡 No activities yet. Start tracking!{% endif %}
+
+calculate_stats: |
+  📊 **Statistics** 
+  
+  Activities: {{ data.totalActivities|default(0) }}
+  Time: {{ data.totalHours|default(0)|round(1) }}h
+
+create_event: |
+  ✅ **Event Scheduled!**
+  
+  📅 {{ data.title }}
+  🕐 {{ data.startTime|format_datetime }}
+  ⏱️ Duration: {{ ((data.endTime|string|length > 0 and data.startTime|string|length > 0)|ternary('varies', params.duration|default(60)|format_duration)) }}
+  {% if data.type %}
+  Type: {{ data.type|capitalize }}
+  {% endif %}
+  
+  You'll be reminded before it starts!
+
+schedule_event: |
+  ✅ **Event Created!**
+  
+  📅 "{{ data.title }}"
+  🕐 {{ data.date|format_date }} at {{ data.time }}
+  ⏱️ {{ data.duration|default(60) }} minutes
+  
+  I'll remind you!
+
+list_skills: |
+  {% if data.skills is defined %}{% set skills_list = data.skills %}{% else %}{% set skills_list = data %}{% endif %}
+  {% if skills_list|length > 0 %}
+  🎯 **Your Skills** ({{ skills_list|length }} total):
+  
+  {% for skill in skills_list %}
+  • **{{ skill.name }}**{% if skill.level %} {{ skill.level|skill_level_emoji }} ({{ skill.level }}){% endif %}
+  {% if skill.notes %}  _{{ skill.notes|truncate(60) }}_{% endif %}
+  {% endfor %}
+  {% else %}
+  🎯 You don't have any skills tracked yet.
+  
+  Start a learning session to create your first skill!
+  {% endif %}
+
+list_notes: |
+  {% if data.notes is defined %}{% set notes_list = data.notes.nodes if data.notes.nodes is defined else data.notes %}{% elif data.searchNotes is defined %}{% set notes_list = data.searchNotes %}{% else %}{% set notes_list = data %}{% endif %}
+  {% if notes_list|length > 0 %}
+  📝 **Your Notes** ({{ notes_list|length }} {{ notes_list|length|pluralize('note') }}):
+  
+  {% set visible_notes, remaining = summarize_list(notes_list, 10) %}
+  {% for note in visible_notes %}
+  • **{{ note.title }}**{% if note.tags and note.tags|length > 0 %} #{{ note.tags|join(' #') }}{% endif %}
+  {% if note.content %}  _{{ note.content|truncate(60) }}_{% endif %}
+  {% endfor %}
+  {% if remaining > 0 %}
+  
+  _...and {{ remaining }} more. Use the web app to see all._
+  {% endif %}
+  {% else %}
+  📝 You don't have any notes yet.
+  
+  Try: "Create a note about..."
+  {% endif %}
+
+create_note: |
+  ✅ **Note Created!**
+  
+  📝 {{ data.title }}
+  {% if data.tags and data.tags|length > 0 %}
+  Tags: #{{ data.tags|join(' #') }}
+  {% endif %}
+  
+  Successfully saved your note.
+
+get_active_session: |
+  {% if data.activeSession %}
+  ⏱️ **Active Session:**
+  
+  Activity: {{ data.activeSession.name }}
+  Started: {{ data.activeSession.startedAt|format_datetime }}
+  Status: {{ data.activeSession.status|capitalize }}
+  {% else %}
+  No active session running.
+  
+  Start one with: "Start learning session for [skill]"
+  {% endif %}
+
+list_activities: |
+  {% if data.activities is defined and data.activities.nodes is defined %}
+  {% set activity_list = data.activities.nodes %}
+  {% set total = data.activities.totalCount %}
+  {% else %}
+  {% set activity_list = data if data is iterable and data is not string else [] %}
+  {% set total = activity_list|length %}
+  {% endif %}
+  
+  {% if activity_list|length > 0 %}
+  ⚡ **Your Activities** ({{ total }} total):
+  
+  {% for activity in activity_list %}
+  • **{{ activity.name }}** - {{ activity.duration|format_duration }}
+    {{ activity.date|format_date }}{% if activity.skill %} ({{ activity.skill.name }}){% endif %}
+  {% endfor %}
+  {% if data.activities is defined and data.activities.hasMore %}
+  
+  _Use the web app to see more activities._
+  {% endif %}
+  {% else %}
+  ⚡ No activities found.
+  
+  Start tracking with: "Start learning session"
+  {% endif %}
+
+# Generic responses
+default: |
+  ✅ Done!
+
+success: |
+  ✅ Success!
+
+error: |
+  ❌ Something went wrong. Please try again.
+
+clarify: |
+  🤔 {{ data.question|default("Could you please clarify?") }}
+
+no_results: |
+  No results found.

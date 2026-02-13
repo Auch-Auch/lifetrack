@@ -6,11 +6,12 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { learningPlanSchema, type LearningPlanFormData } from '../../lib/schemas/event';
 import type { LearningPlan } from '../../lib/events';
+import type { Skill } from '../../lib/skills';
 import { useLearningPlanStore } from '../../stores/learningPlanStore';
 import { getSkills } from '../../lib/skills';
 import Button from '../ui/Button';
@@ -39,10 +40,15 @@ export default function LearningPlanForm({
   const createPlan = useLearningPlanStore((state) => state.createPlan);
   const updatePlan = useLearningPlanStore((state) => state.updatePlan);
   
-  const skills = getSkills();
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
     plan?.skillIds || []
   );
+  
+  // Load skills
+  useEffect(() => {
+    getSkills().then(setSkills);
+  }, []);
   
   // Get today's date for min validation
   const today = new Date().toISOString().split('T')[0];
@@ -58,9 +64,13 @@ export default function LearningPlanForm({
     resolver: zodResolver(learningPlanSchema) as never,
     defaultValues: plan
       ? {
-          ...plan,
+          name: plan.name,
+          description: plan.description,
+          skillIds: plan.skillIds,
+          schedule: plan.schedule as any,
           startDate: plan.startDate,
           endDate: plan.endDate || undefined,
+          targetHoursPerWeek: plan.targetHoursPerWeek,
         }
       : {
           name: '',
@@ -93,7 +103,7 @@ export default function LearningPlanForm({
       if (plan) {
         updatePlan(plan.id, data);
       } else {
-        createPlan(data);
+        createPlan(data as any);
       }
       onSuccess?.();
     } catch (error) {

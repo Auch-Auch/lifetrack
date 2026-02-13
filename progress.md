@@ -123,93 +123,115 @@ To verify the implementation works correctly:
 
 ## Next Steps
 
-### 1. Calendar System 📅 **(IN PROGRESS - Phase 3)**
+### 1. Backend + AI Bot Implementation 🚀 **(IN PROGRESS)**
+New backend-centric architecture with LLM-powered Telegram bot. See [architecture.md](./architecture.md) for detailed technical architecture.
+
+**📋 Phase 1: Backend API & Database** (Weeks 1-2)
+- [ ] Set up Go GraphQL server (gqlgen)
+- [ ] PostgreSQL schema migration
+  - users, skills, activities, events, learning_plans
+  - **notes** table with full-text search (tsvector)
+  - notifications_queue table
+- [ ] Implement JWT authentication (RS256)
+- [ ] GraphQL resolvers for all entities
+  - CRUD operations for activities, events, learning plans, notes
+  - Query filters, pagination, search
+  - Session management (start/pause/resume/stop)
+- [ ] Add full-text search for notes (PostgreSQL FTS)
+
+**🤖 Phase 2: Telegram Bot + LLM Integration** (Weeks 3-4)
+- [ ] Set up Python bot service (python-telegram-bot)
+- [ ] Integrate llama.cpp with Python bindings
+- [ ] Download and configure Llama 3.2 1B/3B model
+- [ ] Implement LLM intent parser
+  - Function-calling style structured outputs (temp=0)
+  - Intent schema with validation
+  - Clarification loop for low-confidence intents
+- [ ] Build GraphQL client in bot
+  - Query builder from intent JSON
+  - JWT authentication (service account)
+  - Error handling and retries
+- [ ] Implement response formatters
+  - Deterministic templates for common intents
+  - Optional LLM-based rich formatting
+- [ ] Bot command handlers
+  - Schedule queries ("What's in my schedule today?")
+  - Session management ("Start learning session")
+  - Notes operations ("List recent notes", "Create note")
+  - Stats queries ("Show my weekly progress")
+
+**🔗 Phase 3: Frontend API Integration** (Weeks 5-6)
+- [ ] Create GraphQL client (lifetrack_front/lib/api/graphql.ts)
+- [ ] Update Zustand stores to use API calls
+  - Feature flag for localStorage vs API mode
+  - Keep optimistic updates
+- [ ] Add Notes feature to frontend
+  - Note data model and Zod schema
+  - noteStore with Zustand
+  - NoteList, NoteForm, NoteView components
+  - Integrate notes into skill/activity/event pages
+  - Full-text search UI
+- [ ] Add authentication flow
+  - Login/register pages
+  - JWT token management
+  - Protected routes
+- [ ] Data migration tool (localStorage → PostgreSQL)
+
+**🚀 Phase 4: Deployment** (Week 7)
+- [ ] Dockerize backend service
+- [ ] Dockerize bot service
+- [ ] Create docker-compose configuration
+- [ ] Set up PostgreSQL with persistent volumes
+- [ ] Configure environment variables and secrets
+- [ ] Deploy backend + database (cloud VPS or managed service)
+- [ ] Deploy bot service (VM with 4-8GB RAM for 3B model)
+- [ ] Set up Telegram webhook or long-polling
+- [ ] Configure reverse proxy (nginx/Caddy)
+- [ ] SSL/TLS certificates
+
+**✅ Phase 5: Testing & Optimization** (Week 8)
+- [ ] Unit tests for GraphQL resolvers
+- [ ] Integration tests for bot flows
+- [ ] End-to-end tests for critical user journeys
+- [ ] LLM intent parsing accuracy testing (>95% target)
+- [ ] Performance optimization
+  - Database query optimization
+  - GraphQL N+1 query prevention
+  - LLM inference optimization (quantization)
+- [ ] Security audit
+  - SQL injection prevention
+  - XSS protection
+  - Rate limiting
+  - JWT security
+
+### 2. Calendar System Integration ✅ **(FOUNDATION COMPLETE)**
 See [PLAN_CALENDAR.md](./PLAN_CALENDAR.md) for detailed implementation plan.
 
-**✅ Phase 1 Complete: Event Data Layer** (Week 1-2)
-- ✅ Installed dependencies: react-big-calendar, date-fns, rrule, react-colorful
-- ✅ Created Event and LearningPlan data models (lib/events.ts)
-- ✅ Implemented event helper functions (lib/helpers/event.ts)
-  - Recurrence rule generation with rrule.js
-  - Conflict detection and resolution
-  - Time slot availability finder
-  - Event validation
-- ✅ Created Zod validation schemas (lib/schemas/event.ts)
-- ✅ Built eventStore with Zustand (stores/eventStore.ts)
-  - CRUD operations
-  - Query/filter operations
-  - Recurrence expansion
-  - Bulk operations
-- ✅ Built learningPlanStore with Zustand (stores/learningPlanStore.ts)
-  - Auto-scheduling algorithm
-  - Calendar sync
-  - Progress tracking
+**Status**: Frontend calendar system is complete with event/learning plan management. Backend integration will happen in Phase 3 above.
 
-**✅ Phase 2 Complete: Calendar UI Components** (Week 3-4)
-- ✅ CalendarView component with react-big-calendar
-  - Month/Week/Day views
-  - Event display with color coding
-  - Click to create/edit events
-- ✅ EventForm component with validation
-  - Create/edit events
-  - Type selection (activity, learning, meeting, reminder, custom)
-  - Recurrence configuration
-  - Notification settings
-  - Skill/activity linking
-  - Color picker integration
-- ✅ EventCard and EventList components
-  - Compact and full card views
-  - Filtering and search
-  - Pagination
-  - Group by date option
-- ✅ LearningPlanForm and LearningPlanCard components
-  - Auto-scheduling configuration
-  - Skill selection
-  - Schedule preferences (frequency, days, times)
-  - Progress tracking display
-- ✅ LearningPlanList component with filtering
-- ✅ Calendar page with tabs (Calendar/Events/Plans)
-  - Stats dashboard
-  - Modal for creating/editing events and plans
-  - Calendar navigation integrated
-- ✅ Updated Sidebar with Calendar link
-- ✅ Fixed all lint errors and TypeScript issues
-- ✅ Fixed Zod schema runtime error (.partial() on schemas with refinements)
-- ✅ Fixed date-fns localizer (using dateFnsLocalizer from react-big-calendar)
+- ✅ Event and LearningPlan data models
+- ✅ Calendar UI with react-big-calendar
+- ✅ Event CRUD with recurrence support
+- ✅ Learning plan auto-scheduling
+- 🔄 Backend API integration (Phase 3)
+- 🔄 Telegram bot calendar commands (Phase 2)
 
-**🔄 Phase 3 Next: Integration & Polish** (Week 5)
-- Integrate calendar with skill pages
-- Add calendar widgets to home page
-- Test all functionality
-- Performance optimization
+### 3. Future Enhancements
 
-### 2. Backend Integration
-- Set up Go GraphQL server
-- PostgreSQL schema (skills, activities, events, learning_plans, users)
-- Replace Zustand stores with API calls
-- Authentication & authorization (JWT)
-- Real-time subscriptions for notifications
-- Data migration from localStorage
-
-### 3. Telegram Bot
-- Natural language command parsing
-- Activity & event management via chat
-- Session timer control
-- Stats queries and reports
-- Notification delivery integration
-
-### 4. Learning Path DAG
+**Learning Path DAG**
 - Interactive skill dependency graph
 - Prerequisites and progression tracking
 - Recommended next steps algorithm
 - Auto-schedule integration with calendar
 
-### 5. Enhanced Features
+**Advanced Features**
 - Data export/import (JSON, CSV)
 - Custom themes and color schemes
-- Mobile responsiveness improvements
+- Mobile app (React Native)
 - Offline support with service workers
 - Advanced analytics dashboard
+- Gmail Calendar two-way sync
+- Multi-user collaboration (shared learning plans)
 
 ## Known Limitations
 

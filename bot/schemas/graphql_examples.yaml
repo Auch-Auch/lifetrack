@@ -1,0 +1,799 @@
+# GraphQL Query Examples for RAG Context
+# Each example includes user intent and corresponding GraphQL query
+
+examples:
+  # Skills Management
+  - intent: "List all my skills"
+    category: "skills"
+    query: |
+      query ListSkills {
+        skills {
+          id
+          name
+          level
+          notes
+          createdAt
+        }
+      }
+    
+  - intent: "Show me my skills"
+    category: "skills"
+    query: |
+      query GetAllSkills {
+        skills {
+          id
+          name
+          level
+        }
+      }
+  
+  - intent: "Create a new skill for Python programming"
+    category: "skills"
+    query: |
+      mutation CreateSkill {
+        createSkill(input: {
+          name: "Python"
+          level: "intermediate"
+          notes: "Programming language"
+        }) {
+          id
+          name
+          level
+        }
+      }
+  
+  - intent: "Add skill called Guitar at beginner level"
+    category: "skills"
+    query: |
+      mutation AddSkill {
+        createSkill(input: {
+          name: "Guitar"
+          level: "beginner"
+        }) {
+          id
+          name
+        }
+      }
+
+  # Sessions / Activities
+  # NOTE: startSession only accepts skillId and name as parameters
+  # startedAt, duration, etc. are set automatically by the server
+  
+  - intent: "Start a Python learning session"
+    category: "sessions"
+    query: |
+      mutation StartSession {
+        startSession(
+          skillId: "SKILL_ID_PLACEHOLDER"
+          name: "Learning session"
+        ) {
+          id
+          name
+          status
+          startedAt
+        }
+      }
+  
+  - intent: "Begin practicing Guitar"
+    category: "sessions"
+    query: |
+      mutation BeginSession {
+        startSession(
+          skillId: "SKILL_ID_PLACEHOLDER"
+          name: "Practice session"
+        ) {
+          id
+          name
+          status
+          startedAt
+        }
+      }
+  
+  - intent: "Stop my current session"
+    category: "sessions"
+    query: |
+      query GetActiveSessionToStop {
+        activeSession {
+          id
+        }
+      }
+  
+  - intent: "End my current learning session"
+    category: "sessions"
+    query: |
+      query GetActiveSessionToEnd {
+        activeSession {
+          id
+          name
+          duration
+        }
+      }
+  
+  - intent: "Stop the session"
+    category: "sessions"
+    query: |
+      query GetCurrentSessionToStop {
+        activeSession {
+          id
+        }
+      }
+  
+  - intent: "What's my active session?"
+    category: "sessions"
+    query: |
+      query GetActiveSession {
+        activeSession {
+          id
+          name
+          skill {
+            name
+          }
+          status
+          startedAt
+          duration
+        }
+      }
+  
+  - intent: "Show me my current session details"
+    category: "sessions"
+    query: |
+      query CheckActiveSession {
+        activeSession {
+          id
+          name
+          skill {
+            name
+            level
+          }
+          status
+          startedAt
+          duration
+        }
+      }
+  
+  - intent: "Pause my session"
+    category: "sessions"
+    query: |
+      query GetActiveSessionToPause {
+        activeSession {
+          id
+        }
+      }
+  
+  - intent: "Resume my session"
+    category: "sessions"
+    query: |
+      query GetActiveSessionToResume {
+        activeSession {
+          id
+        }
+      }
+
+  # Events / Calendar
+  - intent: "Show me today's events"
+    category: "events"
+    query: |
+      query TodayEvents {
+        events(
+          startDate: "TODAY_PLACEHOLDER"
+          endDate: "TODAY_PLACEHOLDER"
+        ) {
+          id
+          title
+          description
+          type
+          startTime
+          endTime
+          allDay
+        }
+      }
+  
+  - intent: "What's on my schedule for tomorrow?"
+    category: "events"
+    query: |
+      query TomorrowSchedule {
+        events(
+          startDate: "TOMORROW_PLACEHOLDER"
+          endDate: "TOMORROW_PLACEHOLDER"
+        ) {
+          id
+          title
+          startTime
+          endTime
+          type
+        }
+      }
+  
+  - intent: "Show me this week's schedule"
+    category: "events"
+    query: |
+      query WeekSchedule {
+        events(
+          startDate: "WEEK_START_PLACEHOLDER"
+          endDate: "WEEK_END_PLACEHOLDER"
+        ) {
+          id
+          title
+          startTime
+          endTime
+          allDay
+        }
+      }
+  
+  - intent: "Create a meeting event for tomorrow at 3pm for 1 hour"
+    category: "events"
+    query: |
+      mutation CreateMeeting {
+        createEvent(input: {
+          title: "Meeting"
+          type: MEETING
+          startTime: "START_TIME_PLACEHOLDER"
+          endTime: "END_TIME_PLACEHOLDER"
+          allDay: false
+        }) {
+          id
+          title
+          startTime
+        }
+      }
+  
+  - intent: "Schedule a reminder for tomorrow morning"
+    category: "events"
+    query: |
+      mutation ScheduleReminder {
+        createEvent(input: {
+          title: "Reminder"
+          type: REMINDER
+          startTime: "START_TIME_PLACEHOLDER"
+          endTime: "END_TIME_PLACEHOLDER"
+          allDay: false
+        }) {
+          id
+          title
+        }
+      }
+  
+  - intent: "What are my upcoming events?"
+    category: "events"
+    query: |
+      query UpcomingEvents {
+        upcomingEvents(limit: 10) {
+          id
+          title
+          startTime
+          endTime
+          type
+        }
+      }
+
+  # Activities / History
+  - intent: "Show me my recent activities"
+    category: "activities"
+    query: |
+      query RecentActivities {
+        activities(limit: 10, offset: 0) {
+          nodes {
+            id
+            name
+            skill {
+              name
+            }
+            duration
+            date
+            status
+          }
+          totalCount
+        }
+      }
+  
+  - intent: "List all completed activities"
+    category: "activities"
+    query: |
+      query CompletedActivities {
+        activities(
+          filter: { status: COMPLETED }
+          limit: 20
+        ) {
+          nodes {
+            id
+            name
+            duration
+            date
+            skill {
+              name
+            }
+          }
+        }
+      }
+  
+  - intent: "Show activities for Python skill"
+    category: "activities"
+    query: |
+      query SkillActivities {
+        activities(
+          filter: { skillId: "SKILL_ID_PLACEHOLDER" }
+          limit: 20
+        ) {
+          nodes {
+            id
+            name
+            duration
+            date
+            status
+          }
+          totalCount
+        }
+      }
+  
+  - intent: "What did I do last week?"
+    category: "activities"
+    query: |
+      query LastWeekActivities {
+        activities(
+          filter: {
+            startDate: "WEEK_START_PLACEHOLDER"
+            endDate: "WEEK_END_PLACEHOLDER"
+          }
+          limit: 50
+        ) {
+          nodes {
+            id
+            name
+            skill {
+              name
+            }
+            duration
+            date
+          }
+        }
+      }
+
+  # Statistics
+  - intent: "Show me my statistics for this week"
+    category: "stats"
+    query: |
+      query WeekStats {
+        activityStats(
+          startDate: "WEEK_START_PLACEHOLDER"
+          endDate: "WEEK_END_PLACEHOLDER"
+        ) {
+          totalActivities
+          totalMinutes
+          totalHours
+          skillBreakdown {
+            skillName
+            totalHours
+            activityCount
+          }
+        }
+      }
+  
+  - intent: "How much time did I spend today?"
+    category: "stats"
+    query: |
+      query TodayStats {
+        activityStats(
+          startDate: "TODAY_PLACEHOLDER"
+          endDate: "TODAY_PLACEHOLDER"
+        ) {
+          totalMinutes
+          totalHours
+          totalActivities
+          skillBreakdown {
+            skillName
+            totalMinutes
+          }
+        }
+      }
+  
+  - intent: "What are my stats for the past month?"
+    category: "stats"
+    query: |
+      query MonthStats {
+        activityStats(
+          startDate: "MONTH_START_PLACEHOLDER"
+          endDate: "TODAY_PLACEHOLDER"
+        ) {
+          totalActivities
+          totalHours
+          skillBreakdown {
+            skillName
+            totalHours
+            activityCount
+          }
+        }
+      }
+
+  # Notes
+  - intent: "Show me all my notes"
+    category: "notes"
+    query: |
+      query AllNotes {
+        notes(limit: 20, offset: 0) {
+          nodes {
+            id
+            title
+            content
+            tags
+            createdAt
+          }
+          totalCount
+        }
+      }
+  
+  - intent: "Create a note about Python concepts"
+    category: "notes"
+    query: |
+      mutation CreateNote {
+        createNote(input: {
+          title: "Python concepts"
+          content: "Note content here"
+          tags: ["python", "learning"]
+        }) {
+          id
+          title
+          createdAt
+        }
+      }
+  
+  - intent: "Search notes for machine learning"
+    category: "notes"
+    query: |
+      query SearchNotes {
+        searchNotes(query: "machine learning") {
+          id
+          title
+          content
+          tags
+          createdAt
+        }
+      }
+  
+  - intent: "Show me notes tagged with python"
+    category: "notes"
+    query: |
+      query NotesWithTag {
+        notes(
+          filter: { tags: ["python"] }
+          limit: 20
+        ) {
+          nodes {
+            id
+            title
+            content
+            tags
+          }
+        }
+      }
+
+  # Learning Plans
+  - intent: "Show my learning plans"
+    category: "learning_plans"
+    query: |
+      query MyLearningPlans {
+        learningPlans {
+          id
+          name
+          description
+          targetHoursPerWeek
+          completedHours
+          startDate
+          endDate
+          skills {
+            name
+          }
+        }
+      }
+  
+  - intent: "Create a learning plan for Python with 10 hours per week"
+    category: "learning_plans"
+    query: |
+      mutation CreateLearningPlan {
+        createLearningPlan(input: {
+          name: "Python Learning Plan"
+          description: "Master Python programming"
+          skillIds: ["SKILL_ID_PLACEHOLDER"]
+          targetHoursPerWeek: 10
+          startDate: "TODAY_PLACEHOLDER"
+          schedule: {
+            frequency: "DAILY"
+            durationMinutes: 90
+            preferredTimes: ["09:00", "14:00"]
+            preferredDays: [1, 2, 3, 4, 5]
+            autoSchedule: true
+          }
+        }) {
+          id
+          name
+          targetHoursPerWeek
+        }
+      }
+
+  # User Info
+  - intent: "Who am I?"
+    category: "user"
+    query: |
+      query Me {
+        me {
+          id
+          name
+          email
+          telegramId
+          createdAt
+        }
+      }
+
+  # Deletion operations
+  - intent: "Delete the event"
+    category: "events"
+    query: |
+      mutation DeleteEvent {
+        deleteEvent(id: "EVENT_ID_PLACEHOLDER")
+      }
+  
+  - intent: "Remove the skill"
+    category: "skills"
+    query: |
+      mutation DeleteSkill {
+        deleteSkill(id: "SKILL_ID_PLACEHOLDER")
+      }
+  
+  - intent: "Delete my note"
+    category: "notes"
+    query: |
+      mutation DeleteNote {
+        deleteNote(id: "NOTE_ID_PLACEHOLDER")
+      }
+  
+  # Schedule/Calendar Disambiguation Examples
+  # IMPORTANT: "schedule" is NOT a root query field
+  # For calendar/schedule, use "events" query
+  # For learning plan schedules, query learningPlans and access nested schedule field
+  
+  - intent: "Show me my schedule"
+    category: "events"
+    query: |
+      query MySchedule {
+        events(
+          startDate: "TODAY_PLACEHOLDER"
+          endDate: "WEEK_END_PLACEHOLDER"
+        ) {
+          id
+          title
+          startTime
+          endTime
+          type
+        }
+      }
+  
+  - intent: "What's my schedule for the week?"
+    category: "events"
+    query: |
+      query WeeklySchedule {
+        events(
+          startDate: "WEEK_START_PLACEHOLDER"
+          endDate: "WEEK_END_PLACEHOLDER"
+        ) {
+          id
+          title
+          description
+          startTime
+          endTime
+          allDay
+        }
+      }
+  
+  - intent: "Show me my learning plan schedule"
+    category: "learning_plans"
+    query: |
+      query LearningPlanSchedules {
+        learningPlans {
+          id
+          name
+          schedule {
+            frequency
+            durationMinutes
+            preferredTimes
+            preferredDays
+            autoSchedule
+          }
+        }
+      }
+
+# ============================================================================
+# IMPORTANT PATTERNS FOR SESSION MANAGEMENT
+# ============================================================================
+# When user says "stop/pause/resume MY/CURRENT session" without specifying ID,
+# we should query activeSession first to get the ID, then the bot will handle
+# the subsequent mutation.
+
+# For explicit operations on a known session:
+  - intent: "Stop session with ID 123"
+    category: "sessions"
+    query: |
+      mutation StopSpecificSession {
+        stopSession(
+          id: "SESSION_ID_HERE"
+          notes: "Completed"
+        ) {
+          id
+          duration
+          status
+        }
+      }
+
+# ============================================================================
+# NEGATIVE EXAMPLES - Common Mistakes to Avoid
+# ============================================================================
+# These examples show INCORRECT queries and the correct alternatives
+# The LLM should learn from these mistakes
+
+negative_examples:
+  - description: "WRONG: Querying 'schedule' at root level"
+    user_message: "Show my schedule"
+    wrong_query: |
+      query {
+        schedule {
+          events
+        }
+      }
+    correct_query: |
+      query UserSchedule {
+        events(limit: 20) {
+          id
+          title
+          startTime
+          endTime
+          category
+        }
+      }
+    reason: "There is no 'schedule' field. Use 'events' query for calendar/schedule."
+
+  - description: "WRONG: Passing nested objects to startSession"
+    user_message: "Start a math learning session"
+    wrong_query: |
+      mutation {
+        startSession(
+          skillId: "123"
+          skill: { name: "Math", category: ACADEMIC }
+          startedAt: "2026-02-11T10:00:00Z"
+        ) {
+          id
+        }
+      }
+    correct_query: |
+      mutation StartMathSession {
+        startSession(skillId: "SKILL_ID_PLACEHOLDER") {
+          id
+          skillId
+          startedAt
+          status
+        }
+      }
+    reason: "startSession only accepts skillId (UUID). Do not pass 'skill' object or 'startedAt' - they are auto-generated."
+
+  - description: "WRONG: Unquoted date/time values"
+    user_message: "Show events this week"
+    wrong_query: |
+      query {
+        events(
+          startDate: 2026-02-10
+          endDate: 2026-02-17
+        ) {
+          id
+        }
+      }
+    correct_query: |
+      query ThisWeekEvents {
+        events(
+          startDate: "2026-02-10"
+          endDate: "2026-02-17"
+        ) {
+          id
+          title
+          startTime
+        }
+      }
+    reason: "Date/time parameters must be quoted strings in ISO format."
+
+  - description: "WRONG: Using wrong placeholder variants"
+    user_message: "Start learning Python"
+    wrong_query: |
+      mutation {
+        startSession(skillId: "PYTHON_ID") {
+          id
+        }
+      }
+    correct_query: |
+      mutation StartPythonSession {
+        startSession(skillId: "SKILL_ID_PLACEHOLDER") {
+          id
+          skillId
+        }
+      }
+    reason: "Always use 'SKILL_ID_PLACEHOLDER' for skills that need resolution. The client will resolve it automatically."
+
+  - description: "WRONG: Querying non-existent fields"
+    user_message: "Get my profile info"
+    wrong_query: |
+      query {
+        user {
+          id
+          username
+          email
+          profilePicture
+        }
+      }
+    correct_query: |
+      query UserProfile {
+        user {
+          id
+          username
+          email
+          timezone
+          preferences
+        }
+      }
+    reason: "Check schema for available fields. 'profilePicture' does not exist, but 'timezone' and 'preferences' do."
+
+  - description: "WRONG: Missing required fields in mutations"
+    user_message: "Create an event for tomorrow"
+    wrong_query: |
+      mutation {
+        createEvent(title: "Meeting") {
+          id
+        }
+      }
+    correct_query: |
+      mutation CreateEvent {
+        createEvent(
+          title: "Meeting"
+          startTime: "2026-02-12T10:00:00Z"
+          endTime: "2026-02-12T11:00:00Z"
+          category: WORK
+        ) {
+          id
+          title
+          startTime
+        }
+      }
+    reason: "createEvent requires: title, startTime, endTime, and category. All are mandatory."
+
+  - description: "WRONG: Using mutations for read operations"
+    user_message: "What skills do I have?"
+    wrong_query: |
+      mutation {
+        getSkills {
+          id
+          name
+        }
+      }
+    correct_query: |
+      query UserSkills {
+        skills {
+          id
+          name
+          category
+          currentLevel
+        }
+      }
+    reason: "Use 'query' for reading data, 'mutation' only for modifications. Skills are queried with 'skills' query."
+
+  - description: "WRONG: Incorrect enum values"
+    user_message: "Show my work activities"
+    wrong_query: |
+      query {
+        activities(category: "work") {
+          id
+        }
+      }
+    correct_query: |
+      query WorkActivities {
+        activities(category: WORK) {
+          id
+          name
+          category
+          duration
+        }
+      }
+    reason: "Enums are uppercase without quotes: WORK, PERSONAL, LEARNING, etc."

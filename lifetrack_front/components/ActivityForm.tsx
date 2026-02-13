@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { activitySchema, type ActivityFormData } from '@/lib/schemas/activity'
@@ -7,6 +7,7 @@ import { useActivityStore } from '@/stores/activityStore'
 import { useToast } from '@/stores/toastStore'
 import { getTodayDate } from '@/lib/activities'
 import type { Activity } from '@/lib/activities'
+import type { Skill } from '@/lib/skills'
 import Input from './ui/Input'
 import Button from './ui/Button'
 import { getSkills } from '@/lib/skills'
@@ -21,7 +22,12 @@ type Props = {
 export default function ActivityForm({ activity, skillId, onSuccess, onCancel }: Props) {
   const { createActivity, updateActivity } = useActivityStore()
   const toast = useToast()
-  const skills = getSkills()
+  const [skills, setSkills] = useState<Skill[]>([])
+  
+  // Load skills
+  useEffect(() => {
+    getSkills().then(setSkills)
+  }, [])
   
   const {
     register,
@@ -38,7 +44,7 @@ export default function ActivityForm({ activity, skillId, onSuccess, onCancel }:
       notes: activity.notes || '',
     } : {
       skillId: skillId || skills[0]?.id || '',
-      name: '',
+      name: 'Practice',
       duration: 30,
       date: getTodayDate(),
       notes: '',
@@ -51,9 +57,15 @@ export default function ActivityForm({ activity, skillId, onSuccess, onCancel }:
         updateActivity(activity.id, data)
         toast.success('Activity updated successfully!')
       } else {
-        createActivity(data)
+        createActivity({ ...data, status: 'COMPLETED' })
         toast.success('Activity created successfully!')
-        reset()
+        reset({
+          skillId: skillId || skills[0]?.id || '',
+          name: 'Practice',
+          duration: 30,
+          date: getTodayDate(),
+          notes: '',
+        })
       }
       onSuccess?.()
     } catch (error) {

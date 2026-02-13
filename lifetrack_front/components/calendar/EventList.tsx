@@ -96,11 +96,11 @@ export default function EventList({
   // Event type options
   const eventTypeOptions: { value: EventType | 'all'; label: string }[] = [
     { value: 'all', label: 'All Types' },
-    { value: 'activity', label: 'Activity' },
-    { value: 'learning', label: 'Learning' },
-    { value: 'meeting', label: 'Meeting' },
-    { value: 'reminder', label: 'Reminder' },
-    { value: 'custom', label: 'Custom' },
+    { value: 'ACTIVITY', label: 'Activity' },
+    { value: 'LEARNING', label: 'Learning' },
+    { value: 'MEETING', label: 'Meeting' },
+    { value: 'REMINDER', label: 'Reminder' },
+    { value: 'CUSTOM', label: 'Custom' },
   ];
   
   // Handle page change

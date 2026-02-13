@@ -2,6 +2,7 @@ import Link from 'next/link'
 import PageHeader from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import ActivityHeatmap365 from '@/components/ActivityHeatmap365'
 import { BookOpen, Activity, Target } from 'lucide-react'
 
 export default function Home() {
@@ -11,6 +12,11 @@ export default function Home() {
         title="Welcome to LifeTrack"
         description="Your personal hub for tracking self-development and learning activities."
       />
+
+      {/* Activity Heatmap */}
+      <div className="mb-8">
+        <ActivityHeatmap365 />
+      </div>
       
       <div className="grid gap-6 md:grid-cols-3 mb-8">
         <Card hoverable>

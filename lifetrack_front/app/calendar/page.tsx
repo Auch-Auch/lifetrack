@@ -37,14 +37,22 @@ export default function CalendarPage() {
   const eventStats = useEventStats();
   const activePlanCount = useActivePlanCount();
   
-  const initializeEvents = useEventStore((state) => state.initialize);
-  const initializePlans = useLearningPlanStore((state) => state.initialize);
+  const fetchEvents = useEventStore((state) => state.fetchEvents);
+  const fetchPlans = useLearningPlanStore((state) => state.fetchPlans);
   
-  // Initialize stores
+  // Initialize stores with current month's data
   useEffect(() => {
-    initializeEvents();
-    initializePlans();
-  }, [initializeEvents, initializePlans]);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    fetchEvents(
+      startOfMonth.toISOString().split('T')[0],
+      endOfMonth.toISOString().split('T')[0]
+    );
+    fetchPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Handle event selection from calendar
   const handleSelectEvent = (event: Event) => {

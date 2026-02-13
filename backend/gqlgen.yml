@@ -1,0 +1,36 @@
+# gqlgen.yml configuration for code generation
+schema:
+  - graph/schema.graphqls
+
+exec:
+  filename: graph/generated.go
+  package: graph
+
+model:
+  filename: graph/model/models_gen.go
+  package: model
+
+resolver:
+  layout: follow-schema
+  dir: graph
+  package: graph
+  filename_template: "{name}.resolvers.go"
+
+# Custom scalar types
+models:
+  UUID:
+    model:
+      - github.com/google/uuid.UUID
+  Time:
+    model:
+      - time.Time
+  Date:
+    model:
+      - time.Time
+
+# Autobind models from database package
+autobind:
+  - github.com/aleksandr/lifetrack/backend/db
+
+# Skip generation for types that will be manually defined
+skip_validation: true

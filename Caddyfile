@@ -1,0 +1,79 @@
+{
+    # Global options
+    auto_https off
+    admin off
+}
+
+# Main reverse proxy configuration
+:80 {
+    # CORS configuration - restrict to specific origins
+    @cors_preflight {
+        method OPTIONS
+    }
+
+    # Handle preflight requests
+    handle @cors_preflight {
+        header Access-Control-Allow-Origin "{$ALLOWED_ORIGINS}"
+        header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        header Access-Control-Allow-Headers "Content-Type, Authorization"
+        header Access-Control-Allow-Credentials "true"
+        header Access-Control-Max-Age "3600"
+        respond 204
+    }
+
+    # Security headers
+    header {
+        # Remove server identification
+        -Server
+        
+        # Security headers
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        
+        # CORS headers for actual requests
+        Access-Control-Allow-Origin "{$ALLOWED_ORIGINS}"
+        Access-Control-Allow-Credentials "true"
+    }
+
+    # Frontend
+    handle /* {
+        reverse_proxy frontend:3000
+    }
+
+    # Backend GraphQL API
+    handle /query* {
+        reverse_proxy backend:8080
+    }
+
+    # Health check endpoint
+    handle /health* {
+        reverse_proxy backend:8080
+    }
+
+    # Disable GraphQL Playground in production
+    # Comment this out for development
+    handle /playground* {
+        respond "Not available in production" 403
+    }
+
+    # Rate limiting for login/register
+    handle /query {
+        rate_limit {
+            zone login {
+                key {remote_host}
+                events 10
+                window 1m
+            }
+        }
+        reverse_proxy backend:8080
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+}

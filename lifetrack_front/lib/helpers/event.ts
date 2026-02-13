@@ -31,22 +31,22 @@ export function generateRecurrenceRule(
 ): string {
   const { startDate, count, until, interval = 1, byWeekday, byMonthDay } = options;
   
-  if (pattern === 'none') {
+  if (pattern === 'NONE') {
     return '';
   }
   
   let freq: number;
   switch (pattern) {
-    case 'daily':
+    case 'DAILY':
       freq = RRule.DAILY;
       break;
-    case 'weekly':
+    case 'WEEKLY':
       freq = RRule.WEEKLY;
       break;
-    case 'monthly':
+    case 'MONTHLY':
       freq = RRule.MONTHLY;
       break;
-    case 'custom':
+    case 'CUSTOM':
       freq = RRule.WEEKLY; // Default for custom
       break;
     default:
@@ -101,7 +101,7 @@ export function expandRecurrence(
   endDate: Date
 ): Event[] {
   // Non-recurring events return single instance
-  if (event.recurrence === 'none' || !event.recurrenceRule) {
+  if (event.recurrence === 'NONE' || !event.recurrenceRule) {
     const eventStart = new Date(event.startTime);
     if (isWithinInterval(eventStart, { start: startDate, end: endDate })) {
       return [event];
@@ -140,7 +140,7 @@ export function expandRecurrence(
  * Calculate the next occurrence of a recurring event
  */
 export function calculateNextOccurrence(event: Event): Date | null {
-  if (event.recurrence === 'none' || !event.recurrenceRule) {
+  if (event.recurrence === 'NONE' || !event.recurrenceRule) {
     return new Date(event.startTime);
   }
   
@@ -239,8 +239,8 @@ export function suggestResolution(conflict: ConflictGroup): ResolutionOption[] {
   // Sort events by priority (can be extended with actual priority field)
   const sortedEvents = [...events].sort((a, b) => {
     // Prioritize non-recurring events
-    if (a.recurrence === 'none' && b.recurrence !== 'none') return -1;
-    if (a.recurrence !== 'none' && b.recurrence === 'none') return 1;
+    if (a.recurrence === 'NONE' && b.recurrence !== 'NONE') return -1;
+    if (a.recurrence !== 'NONE' && b.recurrence === 'NONE') return 1;
     return 0;
   });
   

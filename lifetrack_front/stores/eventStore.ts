@@ -1,24 +1,24 @@
 /**
- * Event Store
+ * Event Store with GraphQL Integration
  * 
- * Global state management for calendar events with localStorage persistence
+ * Global state management for calendar events
  */
 
 'use client';
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { useMemo } from 'react';
-import type { Event, EventType } from '../lib/events';
+import { create } from 'zustand';
+import type { Event, EventType, CreateEventInput, UpdateEventInput } from '../lib/events';
 import {
-  generateId,
-  getTodayDate,
-  createDefaultNotifications,
-  filterEventsByDateRange,
-  sortEventsByTime,
+  getEvents as apiGetEvents,
+  getEventById as apiGetEventById,
+  getUpcomingEvents as apiGetUpcomingEvents,
+  createEvent as apiCreateEvent,
+  updateEvent as apiUpdateEvent,
+  deleteEvent as apiDeleteEvent,
   groupEventsByDate,
+  getTodayDate,
 } from '../lib/events';
-import { expandRecurrence } from '../lib/helpers/event';
 import { useToastStore } from './toastStore';
 
 // ============================================================================
@@ -28,224 +28,202 @@ import { useToastStore } from './toastStore';
 interface EventStore {
   // State
   events: Event[];
-  initialized: boolean;
+  loading: boolean;
+  error: string | null;
   
   // CRUD Operations
-  createEvent: (eventData: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => Event;
-  updateEvent: (id: string, updates: Partial<Event>) => void;
-  deleteEvent: (id: string) => void;
+  fetchEvents: (startDate: string, endDate: string, type?: EventType) => Promise<void>;
+  fetchUpcomingEvents: (limit?: number) => Promise<void>;
+  createEvent: (eventData: CreateEventInput) => Promise<Event>;
+  updateEvent: (id: string, updates: UpdateEventInput) => Promise<void>;
+  deleteEvent: (id: string) => Promise<void>;
   getEvent: (id: string) => Event | undefined;
   
-  // Query Operations
+  // Query Operations (client-side filtering)
   getEventsInRange: (startDate: string, endDate: string) => Event[];
   getEventsByType: (type: EventType) => Event[];
   getEventsBySkill: (skillId: string) => Event[];
-  getUpcomingEvents: (limit?: number) => Event[];
   getTodayEvents: () => Event[];
   searchEvents: (query: string) => Event[];
   
-  // Recurrence Operations
-  expandRecurringEvents: (startDate: string, endDate: string) => Event[];
-  
   // Bulk Operations
-  bulkCreateEvents: (events: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>[]) => Event[];
-  bulkDeleteEvents: (ids: string[]) => void;
+  bulkDeleteEvents: (ids: string[]) => Promise<void>;
   
-  // Initialization
-  initialize: () => void;
+  // Error handling
+  clearError: () => void;
 }
 
 // ============================================================================
 // Store Implementation
 // ============================================================================
 
-export const useEventStore = create<EventStore>()(
-  persist(
-    (set, get) => ({
-      // Initial state
-      events: [],
-      initialized: false,
-      
-      // ========================================================================
-      // CRUD Operations
-      // ========================================================================
-      
-      createEvent: (eventData) => {
-        const now = new Date().toISOString();
-        const newEvent: Event = {
-          ...eventData,
-          id: generateId('event'),
-          notifications: eventData.notifications || createDefaultNotifications(),
-          createdAt: now,
-          updatedAt: now,
-        };
-        
-        set((state) => ({
-          events: [...state.events, newEvent],
-        }));
-        
-        useToastStore.getState().addToast('Event created successfully', 'success');
-        return newEvent;
-      },
-      
-      updateEvent: (id, updates) => {
-        set((state) => ({
-          events: state.events.map((event) =>
-            event.id === id
-              ? { ...event, ...updates, updatedAt: new Date().toISOString() }
-              : event
-          ),
-        }));
-        
-        useToastStore.getState().addToast('Event updated successfully', 'success');
-      },
-      
-      deleteEvent: (id) => {
-        set((state) => ({
-          events: state.events.filter((event) => event.id !== id),
-        }));
-        
-        useToastStore.getState().addToast('Event deleted successfully', 'success');
-      },
-      
-      getEvent: (id) => {
-        return get().events.find((event) => event.id === id);
-      },
-      
-      // ========================================================================
-      // Query Operations
-      // ========================================================================
-      
-      getEventsInRange: (startDate, endDate) => {
-        const { events } = get();
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        
-        return filterEventsByDateRange(events, start, end);
-      },
-      
-      getEventsByType: (type) => {
-        return get().events.filter((event) => event.type === type);
-      },
-      
-      getEventsBySkill: (skillId) => {
-        return get().events.filter((event) => event.skillId === skillId);
-      },
-      
-      getUpcomingEvents: (limit = 5) => {
-        const now = new Date();
-        const { events } = get();
-        
-        const upcoming = events
-          .filter((event) => new Date(event.startTime) > now)
-          .sort((a, b) => 
-            new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-          )
-          .slice(0, limit);
-        
-        return upcoming;
-      },
-      
-      getTodayEvents: () => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        
-        return get().getEventsInRange(
-          today.toISOString(),
-          tomorrow.toISOString()
-        );
-      },
-      
-      searchEvents: (query) => {
-        const { events } = get();
-        const lowerQuery = query.toLowerCase();
-        
-        return events.filter(
-          (event) =>
-            event.title.toLowerCase().includes(lowerQuery) ||
-            event.description?.toLowerCase().includes(lowerQuery) ||
-            event.location?.toLowerCase().includes(lowerQuery) ||
-            event.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))
-        );
-      },
-      
-      // ========================================================================
-      // Recurrence Operations
-      // ========================================================================
-      
-      expandRecurringEvents: (startDate, endDate) => {
-        const { events } = get();
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        
-        const expandedEvents: Event[] = [];
-        
-        for (const event of events) {
-          const instances = expandRecurrence(event, start, end);
-          expandedEvents.push(...instances);
-        }
-        
-        return sortEventsByTime(expandedEvents);
-      },
-      
-      // ========================================================================
-      // Bulk Operations
-      // ========================================================================
-      
-      bulkCreateEvents: (eventsData) => {
-        const now = new Date().toISOString();
-        const newEvents: Event[] = eventsData.map((eventData) => ({
-          ...eventData,
-          id: generateId('event'),
-          notifications: eventData.notifications || createDefaultNotifications(),
-          createdAt: now,
-          updatedAt: now,
-        }));
-        
-        set((state) => ({
-          events: [...state.events, ...newEvents],
-        }));
-        
-        useToastStore.getState().addToast(`${newEvents.length} events created`, 'success');
-        return newEvents;
-      },
-      
-      bulkDeleteEvents: (ids) => {
-        set((state) => ({
-          events: state.events.filter((event) => !ids.includes(event.id)),
-        }));
-        
-        useToastStore.getState().addToast(`${ids.length} events deleted`, 'success');
-      },
-      
-      // ========================================================================
-      // Initialization
-      // ========================================================================
-      
-      initialize: () => {
-        if (get().initialized) return;
-        
-        // Migration logic can go here (e.g., from activities to events)
-        // For now, just mark as initialized
-        
-        set({ initialized: true });
-      },
-    }),
-    {
-      name: 'events_v1', // localStorage key
-      partialize: (state) => ({
-        events: state.events,
-        // Don't persist initialized flag
-      }),
+export const useEventStore = create<EventStore>()((set, get) => ({
+  // Initial state
+  events: [],
+  loading: false,
+  error: null,
+  
+  clearError: () => set({ error: null }),
+  
+  // ========================================================================
+  // API Operations
+  // ========================================================================
+  
+  fetchEvents: async (startDate, endDate, type) => {
+    try {
+      set({ loading: true, error: null });
+      const events = await apiGetEvents(startDate, endDate, type);
+      set({ events, loading: false });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch events',
+        loading: false
+      });
     }
-  )
-);
-
-// ============================================================================
-// Selector Hooks (for performance optimization)
-// ============================================================================
+  },
+  
+  fetchUpcomingEvents: async (limit) => {
+    try {
+      set({ loading: true, error: null });
+      const events = await apiGetUpcomingEvents(limit);
+      set({ events, loading: false });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch upcoming events',
+        loading: false
+      });
+    }
+  },
+  
+  createEvent: async (eventData) => {
+    try {
+      set({ loading: true, error: null });
+      const newEvent = await apiCreateEvent(eventData);
+      set(state => ({
+        events: [...state.events, newEvent],
+        loading: false
+      }));
+      useToastStore.getState().addToast('Event created successfully', 'success');
+      return newEvent;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to create event',
+        loading: false
+      });
+      useToastStore.getState().addToast('Failed to create event', 'error');
+      throw error;
+    }
+  },
+  
+  updateEvent: async (id, updates) => {
+    try {
+      set({ loading: true, error: null });
+      const updated = await apiUpdateEvent(id, updates);
+      set(state => ({
+        events: state.events.map(event => event.id === id ? updated : event),
+        loading: false
+      }));
+      useToastStore.getState().addToast('Event updated successfully', 'success');
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update event',
+        loading: false
+      });
+      useToastStore.getState().addToast('Failed to update event', 'error');
+      throw error;
+    }
+  },
+  
+  deleteEvent: async (id) => {
+    try {
+      set({ loading: true, error: null });
+      await apiDeleteEvent(id);
+      set(state => ({
+        events: state.events.filter(event => event.id !== id),
+        loading: false
+      }));
+      useToastStore.getState().addToast('Event deleted successfully', 'success');
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to delete event',
+        loading: false
+      });
+      useToastStore.getState().addToast('Failed to delete event', 'error');
+      throw error;
+    }
+  },
+  
+  getEvent: (id) => {
+    return get().events.find(event => event.id === id);
+  },
+  
+  // ========================================================================
+  // Client-side Query Operations
+  // ========================================================================
+  
+  getEventsInRange: (startDate, endDate) => {
+    const { events } = get();
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime();
+    
+    return events.filter(event => {
+      const eventStart = new Date(event.startTime).getTime();
+      return eventStart >= start && eventStart <= end;
+    }).sort((a, b) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+  },
+  
+  getEventsByType: (type) => {
+    return get().events.filter(event => event.type === type);
+  },
+  
+  getEventsBySkill: (skillId) => {
+    return get().events.filter(event => event.skillId === skillId);
+  },
+  
+  getTodayEvents: () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    return get().events.filter(event => {
+      const eventDate = new Date(event.startTime);
+      return eventDate >= today && eventDate < tomorrow;
+    }).sort((a, b) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+  },
+  
+  searchEvents: (query) => {
+    const lowerQuery = query.toLowerCase();
+    return get().events.filter(event =>
+      event.title.toLowerCase().includes(lowerQuery) ||
+      event.description?.toLowerCase().includes(lowerQuery) ||
+      event.location?.toLowerCase().includes(lowerQuery)
+    );
+  },
+  
+  bulkDeleteEvents: async (ids) => {
+    try {
+      set({ loading: true, error: null });
+      await Promise.all(ids.map(id => apiDeleteEvent(id)));
+      set(state => ({
+        events: state.events.filter(event => !ids.includes(event.id)),
+        loading: false
+      }));
+      useToastStore.getState().addToast(`${ids.length} events deleted`, 'success');
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Bulk delete failed',
+        loading: false
+      });
+      useToastStore.getState().addToast('Failed to delete events', 'error');
+      throw error;
+    }
+  },
+}));
 
 /**
  * Get events count

@@ -1,0 +1,535 @@
+# GraphQL schema for LifeTrack
+scalar Time
+scalar Date
+scalar UUID
+
+# ======== Types ========
+
+type User {
+  id: UUID!
+  email: String!
+  name: String!
+  telegramId: Int
+  isService: Boolean!
+  isActive: Boolean!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Skill {
+  id: UUID!
+  userId: UUID!
+  name: String!
+  level: String
+  notes: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum ActivityStatus {
+  COMPLETED
+  ACTIVE
+  PAUSED
+}
+
+type Activity {
+  id: UUID!
+  userId: UUID!
+  skillId: UUID!
+  skill: Skill!
+  name: String!
+  duration: Int! # minutes
+  date: Date!
+  notes: String
+  status: ActivityStatus!
+  startedAt: Time
+  pausedAt: Time
+  pausedDuration: Int # milliseconds
+  createdAt: Time!
+}
+
+enum EventType {
+  ACTIVITY
+  LEARNING
+  MEETING
+  REMINDER
+  CUSTOM
+}
+
+enum Recurrence {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+type EventNotifications {
+  enabled: Boolean!
+  channels: [String!]!
+  reminderMinutes: [Int!]!
+}
+
+type Event {
+  id: UUID!
+  userId: UUID!
+  title: String!
+  description: String
+  type: EventType!
+  startTime: Time!
+  endTime: Time!
+  allDay: Boolean!
+  recurrence: Recurrence!
+  recurrenceRule: String
+  recurrenceEnd: Time
+  skillId: UUID
+  skill: Skill
+  activityId: UUID
+  activity: Activity
+  learningPlanId: UUID
+  learningPlan: LearningPlan
+  notifications: EventNotifications
+  color: String
+  location: String
+  attendees: [String!]
+  tags: [String!]
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Schedule {
+  frequency: String!
+  durationMinutes: Int!
+  preferredTimes: [String!]!
+  preferredDays: [Int!]!
+  autoSchedule: Boolean!
+}
+
+type LearningPlan {
+  id: UUID!
+  userId: UUID!
+  name: String!
+  description: String
+  skillIds: [UUID!]!
+  skills: [Skill!]!
+  schedule: Schedule!
+  targetHoursPerWeek: Float
+  startDate: Date!
+  endDate: Date
+  completedHours: Float!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Note {
+  id: UUID!
+  userId: UUID!
+  title: String!
+  content: String!
+  tags: [String!]!
+  linkedType: String
+  linkedId: UUID
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum ReminderPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RepeatPattern {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+type Reminder {
+  id: UUID!
+  userId: UUID!
+  title: String!
+  description: String
+  dueTime: Time!
+  completed: Boolean!
+  completedAt: Time
+  priority: ReminderPriority!
+  repeatPattern: RepeatPattern!
+  repeatRule: String
+  repeatEnd: Time
+  eventId: UUID
+  event: Event
+  notificationChannels: [String!]!
+  reminderTimes: [Int!]!
+  tags: [String!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Notification {
+  id: UUID!
+  userId: UUID!
+  eventId: UUID
+  event: Event
+  reminderId: UUID
+  reminder: Reminder
+  scheduledTime: Time!
+  sent: Boolean!
+  sentAt: Time
+  channel: String!
+  notificationType: String!
+  message: String
+  createdAt: Time!
+}
+
+# ======== Inputs ========
+
+input CreateSkillInput {
+  name: String!
+  level: String
+  notes: String
+}
+
+input UpdateSkillInput {
+  name: String
+  level: String
+  notes: String
+}
+
+input CreateActivityInput {
+  skillId: UUID!
+  name: String!
+  duration: Int!
+  date: Date!
+  notes: String
+  status: ActivityStatus!
+}
+
+input UpdateActivityInput {
+  name: String
+  duration: Int
+  date: Date
+  notes: String
+  status: ActivityStatus
+}
+
+input EventNotificationsInput {
+  enabled: Boolean!
+  channels: [String!]!
+  reminderMinutes: [Int!]!
+}
+
+# Input for creating calendar events
+# REQUIRED: title, type (enum), startTime (quoted ISO), endTime (quoted ISO)
+# Example: startTime: "2026-02-11T10:00:00Z"
+input CreateEventInput {
+  title: String!              # Event title (required)
+  description: String         # Optional description
+  type: EventType!            # Required enum: LEARNING, DEADLINE, PERSONAL, WORK, OTHER
+  startTime: Time!            # Required - quoted ISO string
+  endTime: Time!              # Required - quoted ISO string
+  allDay: Boolean             # Optional - default false
+  recurrence: Recurrence      # Optional recurring pattern
+  recurrenceRule: String      # Optional iCal recurrence rule
+  recurrenceEnd: Time         # Optional end of recurrence
+  skillId: UUID               # Optional link to skill
+  activityId: UUID            # Optional link to activity
+  learningPlanId: UUID        # Optional link to learning plan
+  notifications: EventNotificationsInput  # Optional notification settings
+  color: String               # Optional color code
+  location: String            # Optional location
+  attendees: [String!]        # Optional list of attendees
+  tags: [String!]             # Optional tags
+}
+
+input UpdateEventInput {
+  title: String
+  description: String
+  type: EventType
+  startTime: Time
+  endTime: Time
+  allDay: Boolean
+  recurrence: Recurrence
+  recurrenceRule: String
+  recurrenceEnd: Time
+  skillId: UUID
+  activityId: UUID
+  learningPlanId: UUID
+  notifications: EventNotificationsInput
+  color: String
+  location: String
+  attendees: [String!]
+  tags: [String!]
+}
+
+input ScheduleInput {
+  frequency: String!
+  durationMinutes: Int!
+  preferredTimes: [String!]!
+  preferredDays: [Int!]!
+  autoSchedule: Boolean!
+}
+
+input CreateLearningPlanInput {
+  name: String!
+  description: String
+  skillIds: [UUID!]!
+  schedule: ScheduleInput!
+  targetHoursPerWeek: Float
+  startDate: Date!
+  endDate: Date
+}
+
+input UpdateLearningPlanInput {
+  name: String
+  description: String
+  skillIds: [UUID!]
+  schedule: ScheduleInput
+  targetHoursPerWeek: Float
+  startDate: Date
+  endDate: Date
+}
+
+input CreateNoteInput {
+  title: String!
+  content: String!
+  tags: [String!]
+  linkedType: String
+  linkedId: UUID
+}
+
+input UpdateNoteInput {
+  title: String
+  content: String
+  tags: [String!]
+  linkedType: String
+  linkedId: UUID
+}
+
+input CreateReminderInput {
+  title: String!
+  description: String
+  dueTime: Time!
+  priority: ReminderPriority
+  repeatPattern: RepeatPattern
+  repeatRule: String
+  repeatEnd: Time
+  eventId: UUID
+  notificationChannels: [String!]
+  reminderTimes: [Int!]
+  tags: [String!]
+}
+
+input UpdateReminderInput {
+  title: String
+  description: String
+  dueTime: Time
+  completed: Boolean
+  priority: ReminderPriority
+  repeatPattern: RepeatPattern
+  repeatRule: String
+  repeatEnd: Time
+  eventId: UUID
+  notificationChannels: [String!]
+  reminderTimes: [Int!]
+  tags: [String!]
+}
+
+input ActivityFilter {
+  skillId: UUID
+  startDate: Date
+  endDate: Date
+  status: ActivityStatus
+}
+
+input NoteFilter {
+  tags: [String!]
+  linkedType: String
+  linkedId: UUID
+}
+
+input ReminderFilter {
+  completed: Boolean
+  priority: ReminderPriority
+  tags: [String!]
+  eventId: UUID
+  startDate: Time
+  endDate: Time
+}
+
+# ======== Connection Types for Pagination ========
+
+type ActivityConnection {
+  nodes: [Activity!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type NoteConnection {
+  nodes: [Note!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type ReminderConnection {
+  nodes: [Reminder!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type NotificationConnection {
+  nodes: [Notification!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type ActivityStats {
+  totalActivities: Int!
+  totalMinutes: Int!
+  totalHours: Float!
+  skillBreakdown: [SkillStats!]!
+  period: String!
+}
+
+type SkillStats {
+  skillId: UUID!
+  skillName: String!
+  activityCount: Int!
+  totalMinutes: Int!
+  totalHours: Float!
+}
+
+# ======== Queries ========
+
+type Query {
+  # User - Get current user information
+  me: User!
+  
+  # Skills - User's learning skills and competencies
+  skills: [Skill!]!
+  skill(id: UUID!): Skill
+  
+  # Activities / Sessions - Practice and learning activities
+  # Use 'activities' for history, 'activeSession' for current session
+  activities(filter: ActivityFilter, limit: Int, offset: Int): ActivityConnection!
+  activity(id: UUID!): Activity
+  activeSession: Activity
+  
+  # Events / Calendar - For schedule/calendar queries
+  # IMPORTANT: There is no 'schedule' query - use 'events' instead
+  # For "show my schedule" → use events(startDate: "...", endDate: "...")
+  # REQUIRED: startDate and endDate (quoted ISO date strings)
+  # OPTIONAL: type (enum: LEARNING, DEADLINE, PERSONAL, WORK, OTHER)
+  events(startDate: Date!, endDate: Date!, type: EventType): [Event!]!
+  event(id: UUID!): Event
+  upcomingEvents(limit: Int): [Event!]!
+  
+  # Learning Plans - Goals and structured learning paths
+  learningPlans: [LearningPlan!]!
+  learningPlan(id: UUID!): LearningPlan
+  
+  # Notes - User notes and documentation
+  notes(filter: NoteFilter, limit: Int, offset: Int): NoteConnection!
+  note(id: UUID!): Note
+  searchNotes(query: String!): [Note!]!
+  
+  # Reminders - Standalone reminders and event-based reminders
+  reminders(filter: ReminderFilter, limit: Int, offset: Int): ReminderConnection!
+  reminder(id: UUID!): Reminder
+  upcomingReminders(limit: Int): [Reminder!]!
+  overdueReminders: [Reminder!]!
+  
+  # Notifications - View notification queue and history
+  notifications(sent: Boolean, limit: Int, offset: Int): NotificationConnection!
+  pendingNotifications: [Notification!]!
+  
+  # Statistics - Activity and learning stats
+  # REQUIRED: startDate and endDate (quoted ISO date strings)
+  activityStats(startDate: Date!, endDate: Date!): ActivityStats!
+}
+
+# ======== Mutations ========
+
+type Mutation {
+  # Auth
+  register(email: String!, password: String!, name: String!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  
+  # Skills
+  createSkill(input: CreateSkillInput!): Skill!
+  updateSkill(id: UUID!, input: UpdateSkillInput!): Skill!
+  deleteSkill(id: UUID!): Boolean!
+  
+  # Activities / Sessions
+  createActivity(input: CreateActivityInput!): Activity!
+  updateActivity(id: UUID!, input: UpdateActivityInput!): Activity!
+  deleteActivity(id: UUID!): Boolean!
+  
+  # Start a new learning/practice session
+  # REQUIRED: skillId (UUID) - the ID of the skill to practice
+  # REQUIRED: name (String) - descriptive name for the activity
+  # OPTIONAL: None - other fields are auto-generated
+  # IMPORTANT: Do NOT pass: skill object, startedAt, status, or any other parameters
+  # The session starts immediately with auto-generated timestamp
+  startSession(skillId: UUID!, name: String!): Activity!
+  
+  pauseSession(id: UUID!): Activity!
+  resumeSession(id: UUID!): Activity!
+  stopSession(id: UUID!, notes: String): Activity!
+  
+  # Events / Calendar
+  # Create a calendar event (for schedule/calendar queries)
+  # REQUIRED: title, startTime, endTime, category
+  # IMPORTANT: dates/times must be quoted ISO strings: "2026-02-11T10:00:00Z"
+  createEvent(input: CreateEventInput!): Event!
+  updateEvent(id: UUID!, input: UpdateEventInput!): Event!
+  deleteEvent(id: UUID!): Boolean!
+  
+  # Learning Plans
+  createLearningPlan(input: CreateLearningPlanInput!): LearningPlan!
+  updateLearningPlan(id: UUID!, input: UpdateLearningPlanInput!): LearningPlan!
+  deleteLearningPlan(id: UUID!): Boolean!
+  generateSchedule(planId: UUID!): [Event!]!
+  
+  # Notes
+  createNote(input: CreateNoteInput!): Note!
+  updateNote(id: UUID!, input: UpdateNoteInput!): Note!
+  deleteNote(id: UUID!): Boolean!
+  
+  # Reminders
+  createReminder(input: CreateReminderInput!): Reminder!
+  updateReminder(id: UUID!, input: UpdateReminderInput!): Reminder!
+  deleteReminder(id: UUID!): Boolean!
+  completeReminder(id: UUID!): Reminder!
+  snoozeReminder(id: UUID!, minutes: Int!): Reminder!
+  
+  # Notifications
+  markNotificationSent(id: UUID!): Notification!
+  dismissNotification(id: UUID!): Boolean!
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
+# ======== Subscriptions ========
+
+type EventNotification {
+  event: Event!
+  message: String!
+  minutesBefore: Int!
+}
+
+type ReminderNotification {
+  reminder: Reminder!
+  message: String!
+}
+
+type Subscription {
+  eventReminder(userId: UUID!): EventNotification!
+  reminderNotification(userId: UUID!): ReminderNotification!
+}

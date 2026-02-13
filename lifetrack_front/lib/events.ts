@@ -1,25 +1,25 @@
+'use client'
+
+import { getClient } from './helpers/api-client'
+
 /**
- * Event and Learning Plan Data Models
- * 
- * This module defines the core types and interfaces for the calendar system.
- * Events are generic and can represent activities, meetings, reminders, or any scheduled item.
- * Learning Plans enable automatic scheduling of study sessions.
+ * Event and Learning Plan Data Models with GraphQL Integration
  */
 
 // ============================================================================
 // Event Types
 // ============================================================================
 
-export type EventType = 'activity' | 'learning' | 'meeting' | 'reminder' | 'custom';
+export type EventType = 'ACTIVITY' | 'LEARNING' | 'MEETING' | 'REMINDER' | 'CUSTOM';
 
-export type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
+export type RecurrencePattern = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
 export type NotificationChannel = 'browser' | 'telegram' | 'both';
 
 export interface NotificationSettings {
   enabled: boolean;
-  channels: NotificationChannel[];
-  reminderMinutes: number[]; // e.g., [15, 60] = 15min and 1hr before
+  channels: string[];
+  reminderMinutes: number[];
 }
 
 export interface Event {
@@ -29,74 +29,517 @@ export interface Event {
   type: EventType;
   
   // Timing
-  startTime: string; // ISO 8601 format with timezone
-  endTime: string;   // ISO 8601 format with timezone
+  startTime: string;
+  endTime: string;
   allDay: boolean;
   
   // Recurrence
   recurrence: RecurrencePattern;
-  recurrenceRule?: string; // RRULE format (RFC 5545)
-  recurrenceEnd?: string;  // ISO 8601 - when recurrence ends
+  recurrenceRule?: string;
+  recurrenceEnd?: string;
   
-  // Relations - link events to existing entities
-  skillId?: string;        // Link to skill
-  activityId?: string;     // Link to activity
-  learningPlanId?: string; // Link to learning plan
+  // Relations
+  skillId?: string;
+  activityId?: string;
+  learningPlanId?: string;
   
   // Notifications
-  notifications: NotificationSettings;
+  notifications?: NotificationSettings;
   
   // Metadata
-  color?: string;          // Hex color for calendar display
-  location?: string;       // Physical or virtual location
-  attendees?: string[];    // Email addresses or user IDs
-  tags?: string[];         // Custom tags for filtering
-  
-  // External Integration
-  gmailEventId?: string;   // For Gmail Calendar sync
+  color?: string;
+  location?: string;
+  attendees?: string[];
+  tags?: string[];
   
   // Timestamps
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreateEventInput = {
+  title: string;
+  description?: string;
+  type: EventType;
+  startTime: string;
+  endTime: string;
+  allDay?: boolean;
+  recurrence?: RecurrencePattern;
+  recurrenceRule?: string;
+  recurrenceEnd?: string;
+  skillId?: string;
+  activityId?: string;
+  learningPlanId?: string;
+  notifications?: NotificationSettings;
+  color?: string;
+  location?: string;
+  attendees?: string[];
+  tags?: string[];
+}
+
+export type UpdateEventInput = Partial<CreateEventInput>
 
 // ============================================================================
 // Learning Plan Types
 // ============================================================================
 
 export interface ScheduleSettings {
-  frequency: 'daily' | 'weekly' | 'custom';
+  frequency: string;
   durationMinutes: number;
-  preferredTimes: string[];  // ["09:00", "14:00"] - 24hr format
-  preferredDays: number[];   // [1, 2, 3, 4, 5] = Monday-Friday (0=Sunday)
-  autoSchedule: boolean;     // Automatically create events
+  preferredTimes: string[];
+  preferredDays: number[];
+  autoSchedule: boolean;
 }
 
 export interface LearningPlan {
   id: string;
   name: string;
   description?: string;
-  skillIds: string[];        // Skills included in this plan
-  
-  // Scheduling preferences
+  skillIds: string[];
   schedule: ScheduleSettings;
-  
-  // Goals
   targetHoursPerWeek?: number;
-  startDate: string;          // ISO 8601 date (YYYY-MM-DD)
-  endDate?: string;           // Optional end date
-  
-  // Progress tracking
+  startDate: string;
+  endDate?: string;
   completedHours: number;
-  
-  // Timestamps
   createdAt: string;
   updatedAt: string;
 }
 
+export type CreateLearningPlanInput = {
+  name: string;
+  description?: string;
+  skillIds: string[];
+  schedule: ScheduleSettings;
+  targetHoursPerWeek?: number;
+  startDate: string;
+  endDate?: string;
+}
+
+export type UpdateLearningPlanInput = {
+  name?: string;
+  description?: string;
+  skillIds?: string[];
+  schedule?: ScheduleSettings;
+  targetHoursPerWeek?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 // ============================================================================
-// Utility Types
+// GraphQL Queries
 // ============================================================================
+
+const GET_EVENTS_QUERY = `
+  query GetEvents($startDate: Date!, $endDate: Date!, $type: EventType) {
+    events(startDate: $startDate, endDate: $endDate, type: $type) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      allDay
+      recurrence
+      recurrenceRule
+      recurrenceEnd
+      skillId
+      activityId
+      learningPlanId
+      notifications {
+        enabled
+        channels
+        reminderMinutes
+      }
+      color
+      location
+      attendees
+      tags
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const GET_EVENT_QUERY = `
+  query GetEvent($id: UUID!) {
+    event(id: $id) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      allDay
+      recurrence
+      recurrenceRule
+      recurrenceEnd
+      skillId
+      activityId
+      learningPlanId
+      notifications {
+        enabled
+        channels
+        reminderMinutes
+      }
+      color
+      location
+      attendees
+      tags
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const GET_UPCOMING_EVENTS_QUERY = `
+  query GetUpcomingEvents($limit: Int) {
+    upcomingEvents(limit: $limit) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      allDay
+      color
+      location
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const CREATE_EVENT_MUTATION = `
+  mutation CreateEvent($input: CreateEventInput!) {
+    createEvent(input: $input) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      allDay
+      recurrence
+      recurrenceRule
+      recurrenceEnd
+      skillId
+      activityId
+      learningPlanId
+      color
+      location
+      attendees
+      tags
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const UPDATE_EVENT_MUTATION = `
+  mutation UpdateEvent($id: UUID!, $input: UpdateEventInput!) {
+    updateEvent(id: $id, input: $input) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      allDay
+      recurrence
+      recurrenceRule
+      recurrenceEnd
+      skillId
+      activityId
+      learningPlanId
+      color
+      location
+      attendees
+      tags
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const DELETE_EVENT_MUTATION = `
+  mutation DeleteEvent($id: UUID!) {
+    deleteEvent(id: $id)
+  }
+`
+
+const GET_LEARNING_PLANS_QUERY = `
+  query GetLearningPlans {
+    learningPlans {
+      id
+      name
+      description
+      skillIds
+      schedule {
+        frequency
+        durationMinutes
+        preferredTimes
+        preferredDays
+        autoSchedule
+      }
+      targetHoursPerWeek
+      startDate
+      endDate
+      completedHours
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const GET_LEARNING_PLAN_QUERY = `
+  query GetLearningPlan($id: UUID!) {
+    learningPlan(id: $id) {
+      id
+      name
+      description
+      skillIds
+      schedule {
+        frequency
+        durationMinutes
+        preferredTimes
+        preferredDays
+        autoSchedule
+      }
+      targetHoursPerWeek
+      startDate
+      endDate
+      completedHours
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const CREATE_LEARNING_PLAN_MUTATION = `
+  mutation CreateLearningPlan($input: CreateLearningPlanInput!) {
+    createLearningPlan(input: $input) {
+      id
+      name
+      description
+      skillIds
+      schedule {
+        frequency
+        durationMinutes
+        preferredTimes
+        preferredDays
+        autoSchedule
+      }
+      targetHoursPerWeek
+      startDate
+      endDate
+      completedHours
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const UPDATE_LEARNING_PLAN_MUTATION = `
+  mutation UpdateLearningPlan($id: UUID!, $input: UpdateLearningPlanInput!) {
+    updateLearningPlan(id: $id, input: $input) {
+      id
+      name
+      description
+      skillIds
+      schedule {
+        frequency
+        durationMinutes
+        preferredTimes
+        preferredDays
+        autoSchedule
+      }
+      targetHoursPerWeek
+      startDate
+      endDate
+      completedHours
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+const DELETE_LEARNING_PLAN_MUTATION = `
+  mutation DeleteLearningPlan($id: UUID!) {
+    deleteLearningPlan(id: $id)
+  }
+`
+
+const GENERATE_SCHEDULE_MUTATION = `
+  mutation GenerateSchedule($planId: UUID!) {
+    generateSchedule(planId: $planId) {
+      id
+      title
+      description
+      type
+      startTime
+      endTime
+      learningPlanId
+      createdAt
+      updatedAt
+    }
+  }
+`
+
+// ============================================================================
+// API Functions - Events
+// ============================================================================
+
+export async function getEvents(
+  startDate: string,
+  endDate: string,
+  type?: EventType
+): Promise<Event[]> {
+  const client = getClient()
+  const result = await client.query(GET_EVENTS_QUERY, { startDate, endDate, type }).toPromise()
+  
+  if (result.error) {
+    console.error('Error fetching events:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data?.events || []
+}
+
+export async function getEventById(id: string): Promise<Event | null> {
+  const client = getClient()
+  const result = await client.query(GET_EVENT_QUERY, { id }).toPromise()
+  
+  if (result.error) {
+    console.error('Error fetching event:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data?.event || null
+}
+
+export async function getUpcomingEvents(limit?: number): Promise<Event[]> {
+  const client = getClient()
+  const result = await client.query(GET_UPCOMING_EVENTS_QUERY, { limit }).toPromise()
+  
+  if (result.error) {
+    console.error('Error fetching upcoming events:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data?.upcomingEvents || []
+}
+
+export async function createEvent(input: CreateEventInput): Promise<Event> {
+  const client = getClient()
+  const result = await client.mutation(CREATE_EVENT_MUTATION, { input }).toPromise()
+  
+  if (result.error) {
+    console.error('Error creating event:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.createEvent
+}
+
+export async function updateEvent(id: string, input: UpdateEventInput): Promise<Event> {
+  const client = getClient()
+  const result = await client.mutation(UPDATE_EVENT_MUTATION, { id, input }).toPromise()
+  
+  if (result.error) {
+    console.error('Error updating event:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.updateEvent
+}
+
+export async function deleteEvent(id: string): Promise<boolean> {
+  const client = getClient()
+  const result = await client.mutation(DELETE_EVENT_MUTATION, { id }).toPromise()
+  
+  if (result.error) {
+    console.error('Error deleting event:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.deleteEvent
+}
+
+// ============================================================================
+// API Functions - Learning Plans
+// ============================================================================
+
+export async function getLearningPlans(): Promise<LearningPlan[]> {
+  const client = getClient()
+  const result = await client.query(GET_LEARNING_PLANS_QUERY, {}).toPromise()
+  
+  if (result.error) {
+    console.error('Error fetching learning plans:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data?.learningPlans || []
+}
+
+export async function getLearningPlanById(id: string): Promise<LearningPlan | null> {
+  const client = getClient()
+  const result = await client.query(GET_LEARNING_PLAN_QUERY, { id }).toPromise()
+  
+  if (result.error) {
+    console.error('Error fetching learning plan:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data?.learningPlan || null
+}
+
+export async function createLearningPlan(input: CreateLearningPlanInput): Promise<LearningPlan> {
+  const client = getClient()
+  const result = await client.mutation(CREATE_LEARNING_PLAN_MUTATION, { input }).toPromise()
+  
+  if (result.error) {
+    console.error('Error creating learning plan:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.createLearningPlan
+}
+
+export async function updateLearningPlan(id: string, input: UpdateLearningPlanInput): Promise<LearningPlan> {
+  const client = getClient()
+  const result = await client.mutation(UPDATE_LEARNING_PLAN_MUTATION, { id, input }).toPromise()
+  
+  if (result.error) {
+    console.error('Error updating learning plan:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.updateLearningPlan
+}
+
+export async function deleteLearningPlan(id: string): Promise<boolean> {
+  const client = getClient()
+  const result = await client.mutation(DELETE_LEARNING_PLAN_MUTATION, { id }).toPromise()
+  
+  if (result.error) {
+    console.error('Error deleting learning plan:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.deleteLearningPlan
+}
+
+export async function generateSchedule(planId: string): Promise<Event[]> {
+  const client = getClient()
+  const result = await client.mutation(GENERATE_SCHEDULE_MUTATION, { planId }).toPromise()
+  
+  if (result.error) {
+    console.error('Error generating schedule:', result.error)
+    throw new Error(result.error.message)
+  }
+  
+  return result.data.generateSchedule
+}
 
 export interface TimeSlot {
   start: Date;
@@ -196,11 +639,11 @@ export function calculateEventDuration(event: Event): number {
  */
 export function getEventTypeColor(type: EventType): string {
   const colors: Record<EventType, string> = {
-    activity: '#22c55e',   // green
-    learning: '#3b82f6',   // blue
-    meeting: '#a855f7',    // purple
-    reminder: '#f59e0b',   // amber
-    custom: '#6b7280',     // gray
+    ACTIVITY: '#22c55e',   // green
+    LEARNING: '#3b82f6',   // blue
+    MEETING: '#a855f7',    // purple
+    REMINDER: '#f59e0b',   // amber
+    CUSTOM: '#6b7280',     // gray
   };
   return colors[type];
 }
@@ -322,7 +765,7 @@ export function createBasicEvent(
   title: string,
   startTime: Date,
   durationMinutes: number,
-  type: EventType = 'custom'
+  type: EventType = 'CUSTOM'
 ): Omit<Event, 'id' | 'createdAt' | 'updatedAt'> {
   const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
   
@@ -332,7 +775,7 @@ export function createBasicEvent(
     startTime: startTime.toISOString(),
     endTime: endTime.toISOString(),
     allDay: false,
-    recurrence: 'none',
+    recurrence: 'NONE',
     notifications: createDefaultNotifications(),
   };
 }

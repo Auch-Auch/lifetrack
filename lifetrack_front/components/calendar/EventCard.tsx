@@ -6,8 +6,9 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Event } from '../../lib/events';
+import type { Skill } from '../../lib/skills';
 import { formatEventTime, formatEventDuration, getEventTypeColor } from '../../lib/events';
 import { useEventStore } from '../../stores/eventStore';
 import { getSkills } from '../../lib/skills';
@@ -48,19 +49,24 @@ export default function EventCard({
   compact = false,
 }: EventCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const deleteEvent = useEventStore((state) => state.deleteEvent);
-  const skills = getSkills();
+  
+  // Load skills
+  useEffect(() => {
+    getSkills().then(setSkills);
+  }, []);
   
   const skill = skills.find((s) => s.id === event.skillId);
   const eventColor = event.color || getEventTypeColor(event.type);
   
   // Event type emoji
   const typeEmoji = {
-    activity: '🎯',
-    learning: '📚',
-    meeting: '👥',
-    reminder: '⏰',
-    custom: '📌',
+    ACTIVITY: '🎯',
+    LEARNING: '📚',
+    MEETING: '👥',
+    REMINDER: '⏰',
+    CUSTOM: '📌',
   }[event.type];
   
   const handleDelete = () => {
@@ -119,7 +125,7 @@ export default function EventCard({
                 <Badge variant="default">{event.type}</Badge>
                 {skill && <Badge variant="info">{skill.name}</Badge>}
                 {event.allDay && <Badge variant="warning">All day</Badge>}
-                {event.recurrence !== 'none' && (
+                {event.recurrence !== 'NONE' && (
                   <Badge variant="default">
                     <Repeat className="w-3 h-3 mr-1" />
                     Recurring
@@ -153,7 +159,7 @@ export default function EventCard({
                   </div>
                 )}
                 
-                {event.notifications.enabled && (
+                {event.notifications?.enabled && (
                   <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]">
                     <Bell className="w-4 h-4" />
                     <span>

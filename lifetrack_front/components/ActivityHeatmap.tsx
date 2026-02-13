@@ -11,9 +11,13 @@ type Props = {
 }
 
 export default function ActivityHeatmap({ skillId, onAddActivity }: Props) {
-  const activities = useActivityStore(state => 
-    state.listActivities(skillId).filter(a => a.status === 'completed')
-  )
+  const allActivities = useActivityStore(state => state.activities)
+  
+  const activities = useMemo(() => {
+    return allActivities
+      .filter(a => a.status === 'COMPLETED' && a.skillId === skillId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [allActivities, skillId])
   
   const DAYS = 120
   

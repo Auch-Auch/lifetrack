@@ -1,8 +1,9 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useActivityStore } from '@/stores/activityStore'
 import { useToast } from '@/stores/toastStore'
 import type { Activity } from '@/lib/activities'
+import type { Skill } from '@/lib/skills'
 import { formatDuration } from '@/lib/activities'
 import { getSkillById } from '@/lib/skills'
 import { Card } from './ui/Card'
@@ -19,15 +20,37 @@ type Props = {
 }
 
 export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) {
-  const { listActivities, deleteActivity } = useActivityStore()
+  const activities = useActivityStore((state) => state.activities)
+  const deleteActivity = useActivityStore((state) => state.deleteActivity)
   const toast = useToast()
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [skills, setSkills] = useState<Map<string, Skill>>(new Map())
   
-  const allActivities = listActivities(skillId).filter(a => a.status === 'completed')
-  const totalPages = Math.max(1, Math.ceil(allActivities.length / pageSize))
+  // Filter and sort activities
+  const filteredActivities = React.useMemo(() => {
+    return activities
+      .filter(a => a.status === 'COMPLETED')
+      .filter(a => !skillId || a.skillId === skillId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [activities, skillId])
   
-  const activities = allActivities.slice((page - 1) * pageSize, page * pageSize)
+  // Load skills for all activities
+  useEffect(() => {
+    const uniqueSkillIds = [...new Set(filteredActivities.map(a => a.skillId))]
+    Promise.all(uniqueSkillIds.map(id => getSkillById(id).then(skill => ({ id, skill }))))
+      .then(results => {
+        const skillMap = new Map()
+        results.forEach(({ id, skill }) => {
+          if (skill) skillMap.set(id, skill)
+        })
+        setSkills(skillMap)
+      })
+  }, [filteredActivities.length])
+  
+  const totalPages = Math.max(1, Math.ceil(filteredActivities.length / pageSize))
+  
+  const displayActivities = filteredActivities.slice((page - 1) * pageSize, page * pageSize)
   
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this activity?')) {
@@ -36,7 +59,7 @@ export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) 
     }
   }
   
-  if (allActivities.length === 0) {
+  if (filteredActivities.length === 0) {
     return (
       <EmptyState
         icon={<Calendar size={48} />}
@@ -48,8 +71,8 @@ export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) 
   
   return (
     <div className="space-y-4">
-      {activities.map(activity => {
-        const skill = getSkillById(activity.skillId)
+      {displayActivities.map(activity => {
+        const skill = skills.get(activity.skillId)
         const isExpanded = expandedId === activity.id
         
         return (

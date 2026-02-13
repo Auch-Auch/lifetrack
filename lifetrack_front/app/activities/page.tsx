@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useActivityStore } from '@/stores/activityStore'
 import { getSkills } from '@/lib/skills'
 import { formatDuration, getTodayDate } from '@/lib/activities'
@@ -10,15 +10,22 @@ import ActivityList from '@/components/ActivityList'
 import ActivityForm from '@/components/ActivityForm'
 import { Plus, Clock, Calendar, TrendingUp } from 'lucide-react'
 import type { Activity } from '@/lib/activities'
+import type { Skill } from '@/lib/skills'
 
 export default function ActivitiesPage() {
-  const { listActivities } = useActivityStore()
-  const skills = getSkills()
+  const activities = useActivityStore((state) => state.activities)
+  const fetchActivities = useActivityStore((state) => state.fetchActivities)
+  const [skills, setSkills] = useState<Skill[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
   const [filterSkillId, setFilterSkillId] = useState<string>('')
   
-  const allActivities = listActivities()
+  // Load skills and activities on mount
+  useEffect(() => {
+    getSkills().then(setSkills)
+    fetchActivities()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   
   // Calculate stats
   const stats = useMemo(() => {
@@ -31,20 +38,20 @@ export default function ActivitiesPage() {
     startOfMonth.setDate(1)
     const monthStart = startOfMonth.toISOString().split('T')[0]
     
-    const todayMinutes = allActivities
-      .filter(a => a.date === today && a.status === 'completed')
+    const todayMinutes = activities
+      .filter(a => a.date === today && a.status === 'COMPLETED')
       .reduce((sum, a) => sum + a.duration, 0)
     
-    const weekMinutes = allActivities
-      .filter(a => a.date >= weekStart && a.status === 'completed')
+    const weekMinutes = activities
+      .filter(a => a.date >= weekStart && a.status === 'COMPLETED')
       .reduce((sum, a) => sum + a.duration, 0)
     
-    const monthMinutes = allActivities
-      .filter(a => a.date >= monthStart && a.status === 'completed')
+    const monthMinutes = activities
+      .filter(a => a.date >= monthStart && a.status === 'COMPLETED')
       .reduce((sum, a) => sum + a.duration, 0)
     
     return { todayMinutes, weekMinutes, monthMinutes }
-  }, [allActivities])
+  }, [activities])
   
   const handleEdit = (activity: Activity) => {
     setEditingActivity(activity)

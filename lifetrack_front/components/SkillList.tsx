@@ -7,7 +7,8 @@ import Avatar from './ui/Avatar'
 import Badge from './ui/Badge'
 import Pagination from './ui/Pagination'
 import EmptyState from './ui/EmptyState'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Activity } from 'lucide-react'
+import { useActivityStore } from '@/stores/activityStore'
 
 type Props = {
   items: Skill[]
@@ -17,6 +18,7 @@ type Props = {
 
 export default function SkillList({ items, pageSize = 6, linkToSkill = true }: Props) {
   const [page, setPage] = useState(1)
+  const activeSession = useActivityStore((state) => state.activeSession)
 
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
 
@@ -39,8 +41,15 @@ export default function SkillList({ items, pageSize = 6, linkToSkill = true }: P
     <section className="p-4">
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {pageItems.map(skill => {
+          const isActiveSession = activeSession?.skillId === skill.id
           const cardContent = (
-            <Card hoverable className="p-4 h-full">
+            <Card hoverable className="p-4 h-full relative">
+              {isActiveSession && (
+                <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius)] bg-[hsl(var(--danger)_/_0.1)] text-[hsl(var(--danger))]">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--danger))] animate-pulse" />
+                  <span className="text-xs font-medium">Active</span>
+                </div>
+              )}
               <div className="flex items-center gap-3 mb-3">
                 <Avatar name={skill.name} size="md" />
                 <div className="flex-1 min-w-0">
