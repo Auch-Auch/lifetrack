@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Grid3x3, Activity, Calendar, Bell, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
+import { Home, Grid3x3, Activity, Calendar, Bell, ChevronLeft, ChevronRight, BarChart3, FileText, Network } from 'lucide-react'
 import Button from './ui/Button'
 import UserProfile from './UserProfile'
 import SidebarLiveSession from './SidebarLiveSession'
@@ -21,6 +21,8 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/skill-map', label: 'Skills', icon: Grid3x3 },
   { href: '/activities', label: 'Activities', icon: Activity },
+  { href: '/learning-plans', label: 'Learning Plans', icon: Network },
+  { href: '/notes', label: 'Notes', icon: FileText },
   { href: '/statistics', label: 'Statistics', icon: BarChart3 },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/reminders', label: 'Reminders', icon: Bell },

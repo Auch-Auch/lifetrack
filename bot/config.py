@@ -10,7 +10,7 @@ class Config:
     
     # Backend API
     BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8080/query')
-    SERVICE_JWT = os.getenv('SERVICE_JWT')
+    BACKEND_AUTH_URL = os.getenv('BACKEND_AUTH_URL', 'http://localhost:8080/query')
     
     # LLM Model (Qwen 2.5 Coder 7B optimized)
     MODEL_PATH = os.getenv('MODEL_PATH', '/app/models/qwen2.5-coder-7b-instruct-q5_k_m.gguf')
@@ -39,7 +39,3 @@ class Config:
         """Validate required configuration"""
         if not cls.TELEGRAM_BOT_TOKEN:
             raise ValueError("TELEGRAM_BOT_TOKEN is required")
-        if not cls.SERVICE_JWT:
-            raise ValueError("SERVICE_JWT is required")
-        if not os.path.exists(cls.MODEL_PATH):
-            raise ValueError(f"Model not found at {cls.MODEL_PATH}")

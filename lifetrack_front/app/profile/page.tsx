@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import { getUser, isAuthenticated, logout } from '@/lib/helpers/auth'
-import { User as UserIcon, Mail, Key, Calendar, LogOut } from 'lucide-react'
+import { linkTelegram, generateTelegramLinkingCode } from '@/lib/user'
+import { User as UserIcon, Mail, Key, Calendar, LogOut, MessageCircle, Copy, CheckCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState(getUser())
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [linkingCode, setLinkingCode] = useState('')
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -20,11 +23,18 @@ export default function ProfilePage() {
     const currentUser = getUser()
     if (currentUser) {
       setUser(currentUser)
+      setLinkingCode(generateTelegramLinkingCode(currentUser.id))
     }
   }, [router])
 
   const handleLogout = async () => {
     await logout()
+  }
+
+  const copyLinkingCode = () => {
+    navigator.clipboard.writeText(linkingCode)
+    setCopiedCode(true)
+    setTimeout(() => setCopiedCode(false), 2000)
   }
 
   if (!user) {
@@ -124,6 +134,70 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
+          </div>
+
+          {/* Telegram Notifications */}
+          <div className="pt-6 border-t border-[hsl(var(--border))]">
+            <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--foreground))] flex items-center gap-2">
+              <MessageCircle size={20} />
+              Telegram Notifications
+            </h3>
+            
+            {user.telegramId ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle size={16} />
+                  <span>Telegram account linked (ID: {user.telegramId})</span>
+                </div>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  You'll receive event reminders and notifications through Telegram.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Link your Telegram account to receive event reminders and notifications directly in Telegram.
+                </p>
+                
+                <div className="bg-[hsl(var(--muted)/0.5)] rounded-[var(--radius)] p-4 space-y-3">
+                  <h4 className="font-medium text-sm text-[hsl(var(--foreground))]">Setup Instructions:</h4>
+                  <ol className="text-sm text-[hsl(var(--muted-foreground))] space-y-2 list-decimal list-inside">
+                    <li>Open Telegram and search for <strong>@GenGenAssistBot</strong></li>
+                    <li>Start a conversation with <strong>/start</strong></li>
+                    <li>Use the <strong>/link</strong> command</li>
+                    <li>Send your linking code below to the bot</li>
+                    <li>Your account will be automatically linked!</li>
+                  </ol>
+                  
+                  <div className="mt-4">
+                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-2">
+                      Your Linking Code:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={linkingCode}
+                        readOnly
+                        className="flex-1 px-3 py-2 text-sm font-mono rounded-[var(--radius)] bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))]"
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={copyLinkingCode}
+                        className="flex items-center gap-1"
+                      >
+                        {copiedCode ? <CheckCircle size={14} /> : <Copy size={14} />}
+                        {copiedCode ? 'Copied!' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Note: Make sure you're using the official LifeTrack bot on Telegram.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

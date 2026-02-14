@@ -117,8 +117,33 @@ type LearningPlan {
   startDate: Date!
   endDate: Date
   completedHours: Float!
+  nodes: [LearningPlanNode!]!
+  edges: [LearningPlanEdge!]!
   createdAt: Time!
   updatedAt: Time!
+}
+
+type LearningPlanNode {
+  id: UUID!
+  learningPlanId: UUID!
+  skillId: UUID
+  skill: Skill
+  title: String!
+  description: String
+  plannedHours: Float!
+  completedHours: Float!
+  positionX: Float!
+  positionY: Float!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type LearningPlanEdge {
+  id: UUID!
+  learningPlanId: UUID!
+  sourceNodeId: UUID!
+  targetNodeId: UUID!
+  createdAt: Time!
 }
 
 type Note {
@@ -293,6 +318,32 @@ input UpdateLearningPlanInput {
   endDate: Date
 }
 
+input CreateLearningPlanNodeInput {
+  learningPlanId: UUID!
+  skillId: UUID
+  title: String!
+  description: String
+  plannedHours: Float!
+  positionX: Float!
+  positionY: Float!
+}
+
+input UpdateLearningPlanNodeInput {
+  skillId: UUID
+  title: String
+  description: String
+  plannedHours: Float
+  completedHours: Float
+  positionX: Float
+  positionY: Float
+}
+
+input CreateLearningPlanEdgeInput {
+  learningPlanId: UUID!
+  sourceNodeId: UUID!
+  targetNodeId: UUID!
+}
+
 input CreateNoteInput {
   title: String!
   content: String!
@@ -457,6 +508,7 @@ type Mutation {
   # Auth
   register(email: String!, password: String!, name: String!): AuthPayload!
   login(email: String!, password: String!): AuthPayload!
+  linkTelegram(telegramId: Int!, telegramUsername: String): User!
   
   # Skills
   createSkill(input: CreateSkillInput!): Skill!
@@ -493,6 +545,15 @@ type Mutation {
   updateLearningPlan(id: UUID!, input: UpdateLearningPlanInput!): LearningPlan!
   deleteLearningPlan(id: UUID!): Boolean!
   generateSchedule(planId: UUID!): [Event!]!
+  
+  # Learning Plan Nodes
+  createLearningPlanNode(input: CreateLearningPlanNodeInput!): LearningPlanNode!
+  updateLearningPlanNode(id: UUID!, input: UpdateLearningPlanNodeInput!): LearningPlanNode!
+  deleteLearningPlanNode(id: UUID!): Boolean!
+  
+  # Learning Plan Edges
+  createLearningPlanEdge(input: CreateLearningPlanEdgeInput!): LearningPlanEdge!
+  deleteLearningPlanEdge(id: UUID!): Boolean!
   
   # Notes
   createNote(input: CreateNoteInput!): Note!

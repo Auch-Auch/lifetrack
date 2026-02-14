@@ -10,15 +10,33 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 
+def get_user_client(context: ContextTypes.DEFAULT_TYPE):
+    """Get authenticated GraphQL client for the user"""
+    return context.user_data.get('gql_client')
+
+
+def require_auth(func):
+    """Decorator to require authentication for command handlers"""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not context.user_data.get('auth_token'):
+            await update.message.reply_text(
+                "🔒 Please login first using /start"
+            )
+            return
+        return await func(update, context)
+    return wrapper
+
+
+@require_auth
 async def session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /session command - Unified session management and skills view
     Shows quick start/stop buttons + active session + skills list
     """
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     if not gql_client:
-        await update.message.reply_text("❌ Bot not initialized. Try again in a moment.")
+        await update.message.reply_text("❌ Error: Authentication issue. Please /logout and login again.")
         return
     
     # Fetch active session and skills separately to avoid timeout
@@ -170,14 +188,15 @@ async def skills(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await session(update, context)
 
 
+@require_auth
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /schedule command - Show today's schedule with navigation and event creation
     """
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     if not gql_client:
-        await update.message.reply_text("❌ Bot not initialized. Try again in a moment.")
+        await update.message.reply_text("❌ Error: Authentication issue. Please /logout and login again.")
         return
     
     from datetime import date, datetime
@@ -268,14 +287,15 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ Error fetching schedule. Please try again.")
 
 
+@require_auth
 async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /notes command - List recent notes with interactive UI
     """
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     if not gql_client:
-        await update.message.reply_text("❌ Bot not initialized. Try again in a moment.")
+        await update.message.reply_text("❌ Error: Authentication issue. Please /logout and login again.")
         return
     
     query = """
@@ -350,14 +370,15 @@ async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("❌ Error fetching notes. Please try again.")
 
 
+@require_auth
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /stats command - Show activity statistics
     """
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     if not gql_client:
-        await update.message.reply_text("❌ Bot not initialized. Try again in a moment.")
+        await update.message.reply_text("❌ Error: Authentication issue. Please /logout and login again.")
         return
     
     from datetime import date, timedelta

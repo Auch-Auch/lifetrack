@@ -5,37 +5,17 @@
 }
 
 # Main reverse proxy configuration
-:80 {
-    # CORS configuration - restrict to specific origins
-    @cors_preflight {
-        method OPTIONS
-    }
-
-    # Handle preflight requests
-    handle @cors_preflight {
-        header Access-Control-Allow-Origin "{$ALLOWED_ORIGINS}"
-        header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-        header Access-Control-Allow-Headers "Content-Type, Authorization"
-        header Access-Control-Allow-Credentials "true"
-        header Access-Control-Max-Age "3600"
-        respond 204
-    }
-
+:8001 {
     # Security headers
     header {
         # Remove server identification
-        -Server
-        
+        -Server 
         # Security headers
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         X-XSS-Protection "1; mode=block"
         Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "geolocation=(), microphone=(), camera=()"
-        
-        # CORS headers for actual requests
-        Access-Control-Allow-Origin "{$ALLOWED_ORIGINS}"
-        Access-Control-Allow-Credentials "true"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"     
     }
 
     # Frontend
@@ -59,17 +39,8 @@
         respond "Not available in production" 403
     }
 
-    # Rate limiting for login/register
-    handle /query {
-        rate_limit {
-            zone login {
-                key {remote_host}
-                events 10
-                window 1m
-            }
-        }
-        reverse_proxy backend:8080
-    }
+    # Note: Rate limiting requires a custom Caddy build with the rate_limit plugin
+    # For now, implement rate limiting at the application level or use a firewall
 
     # Logging
     log {

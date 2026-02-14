@@ -7,6 +7,7 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -14,8 +15,89 @@ import (
 	"github.com/aleksandr/lifetrack/backend/auth"
 	"github.com/aleksandr/lifetrack/backend/graph/model"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 )
+
+// Helper function to scan a reminder from a database row with proper array handling
+func scanReminder(scanner interface{ Scan(...interface{}) error }) (*model.Reminder, error) {
+	var reminder model.Reminder
+	var notificationChannels, tags pq.StringArray
+	var reminderTimes pq.Int64Array
+
+	err := scanner.Scan(
+		&reminder.ID,
+		&reminder.UserID,
+		&reminder.Title,
+		&reminder.Description,
+		&reminder.DueTime,
+		&reminder.Completed,
+		&reminder.CompletedAt,
+		&reminder.Priority,
+		&reminder.RepeatPattern,
+		&reminder.RepeatRule,
+		&reminder.RepeatEnd,
+		&reminder.EventID,
+		&notificationChannels,
+		&reminderTimes,
+		&tags,
+		&reminder.CreatedAt,
+		&reminder.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert pq arrays to Go slices
+	reminder.NotificationChannels = []string(notificationChannels)
+	reminder.Tags = []string(tags)
+	reminder.ReminderTimes = make([]int, len(reminderTimes))
+	for i, v := range reminderTimes {
+		reminder.ReminderTimes[i] = int(v)
+	}
+
+	return &reminder, nil
+}
+
+// Helper function to scan a reminder from sqlx.Rows
+func scanReminderFromRows(rows *sqlx.Rows) (*model.Reminder, error) {
+	var reminder model.Reminder
+	var notificationChannels, tags pq.StringArray
+	var reminderTimes pq.Int64Array
+
+	err := rows.Scan(
+		&reminder.ID,
+		&reminder.UserID,
+		&reminder.Title,
+		&reminder.Description,
+		&reminder.DueTime,
+		&reminder.Completed,
+		&reminder.CompletedAt,
+		&reminder.Priority,
+		&reminder.RepeatPattern,
+		&reminder.RepeatRule,
+		&reminder.RepeatEnd,
+		&reminder.EventID,
+		&notificationChannels,
+		&reminderTimes,
+		&tags,
+		&reminder.CreatedAt,
+		&reminder.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert pq arrays to Go slices
+	reminder.NotificationChannels = []string(notificationChannels)
+	reminder.Tags = []string(tags)
+	reminder.ReminderTimes = make([]int, len(reminderTimes))
+	for i, v := range reminderTimes {
+		reminder.ReminderTimes[i] = int(v)
+	}
+
+	return &reminder, nil
+}
 
 // Register creates a new user account
 func (r *mutationResolver) Register(ctx context.Context, email string, password string, name string) (*model.AuthPayload, error) {
@@ -116,6 +198,50 @@ func (r *mutationResolver) Login(ctx context.Context, email string, password str
 	}, nil
 }
 
+// LinkTelegram links a Telegram account to the authenticated user
+func (r *mutationResolver) LinkTelegram(ctx context.Context, telegramID int, telegramUsername *string) (*model.User, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Check if telegram ID is already linked to another user
+	var existingUserID uuid.UUID
+	err = r.DB.Get(&existingUserID, `SELECT id FROM users WHERE telegram_id = $1 AND id != $2`, telegramID, userID)
+	if err == nil {
+		return nil, fmt.Errorf("this Telegram account is already linked to another user")
+	}
+
+	// Update user with telegram ID
+	now := time.Now()
+	_, err = r.DB.Exec(`
+		UPDATE users 
+		SET telegram_id = $1, updated_at = $2
+		WHERE id = $3
+	`, telegramID, now, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to link Telegram account: %w", err)
+	}
+
+	// Fetch updated user
+	var updatedUser model.User
+	err = r.DB.Get(&updatedUser, `
+		SELECT id, email, name, telegram_id, is_service, is_active, created_at, updated_at
+		FROM users
+		WHERE id = $1
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated user: %w", err)
+	}
+
+	return &updatedUser, nil
+}
+
 // CreateSkill creates a new skill
 func (r *mutationResolver) CreateSkill(ctx context.Context, input model.CreateSkillInput) (*model.Skill, error) {
 	user, err := auth.RequireAuth(ctx)
@@ -158,12 +284,12 @@ func (r *mutationResolver) CreateSkill(ctx context.Context, input model.CreateSk
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1
 	`, skillID)
 	if err != nil {
@@ -218,15 +344,15 @@ func (r *mutationResolver) CreateActivity(ctx context.Context, input model.Creat
 	err = r.DB.Get(&activity, `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			created_at as createdat
+			started_at,
+			created_at
 		FROM activities WHERE id = $1
 	`, activityID)
 	if err != nil {
@@ -238,12 +364,12 @@ func (r *mutationResolver) CreateActivity(ctx context.Context, input model.Creat
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1
 	`, input.SkillID)
 	if err == nil {
@@ -366,12 +492,12 @@ func (r *mutationResolver) StartSession(ctx context.Context, skillID uuid.UUID, 
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1
 	`, skillID)
 	if err != nil {
@@ -428,17 +554,17 @@ func (r *mutationResolver) PauseSession(ctx context.Context, id uuid.UUID) (*mod
 	err = r.DB.Get(&result, `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			paused_at as pausedat,
-			paused_duration as pausedduration,
-			created_at as createdat
+			started_at,
+			paused_at,
+			paused_duration,
+			created_at
 		FROM activities WHERE id = $1
 	`, id)
 	if err != nil {
@@ -511,17 +637,17 @@ func (r *mutationResolver) ResumeSession(ctx context.Context, id uuid.UUID) (*mo
 	err = r.DB.Get(&result, `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			paused_at as pausedat,
-			paused_duration as pausedduration,
-			created_at as createdat
+			started_at,
+			paused_at,
+			paused_duration,
+			created_at
 		FROM activities WHERE id = $1
 	`, id)
 	if err != nil {
@@ -611,15 +737,15 @@ func (r *mutationResolver) StopSession(ctx context.Context, id uuid.UUID, notes 
 	err = r.DB.Get(&result, `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			created_at as createdat
+			started_at,
+			created_at
 		FROM activities WHERE id = $1
 	`, id)
 	if err != nil {
@@ -629,12 +755,12 @@ func (r *mutationResolver) StopSession(ctx context.Context, id uuid.UUID, notes 
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1
 	`, result.SkillID)
 	if err != nil {
@@ -678,12 +804,17 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input model.CreateEv
 	recurrenceStr := strings.ToLower(string(recurrence))
 
 	// Convert notifications to JSONB
-	var notificationsJSON interface{}
+	var notificationsJSON []byte
 	if input.Notifications != nil {
-		notificationsJSON = map[string]interface{}{
+		notifData := map[string]interface{}{
 			"enabled":         input.Notifications.Enabled,
 			"channels":        input.Notifications.Channels,
 			"reminderMinutes": input.Notifications.ReminderMinutes,
+		}
+		var err error
+		notificationsJSON, err = json.Marshal(notifData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal notifications: %w", err)
 		}
 	}
 
@@ -847,6 +978,21 @@ func (r *mutationResolver) UpdateEvent(ctx context.Context, id uuid.UUID, input 
 		argIdx++
 	}
 
+	if input.Notifications != nil {
+		notifData := map[string]interface{}{
+			"enabled":         input.Notifications.Enabled,
+			"channels":        input.Notifications.Channels,
+			"reminderMinutes": input.Notifications.ReminderMinutes,
+		}
+		notificationsJSON, err := json.Marshal(notifData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal notifications: %w", err)
+		}
+		updateFields = append(updateFields, fmt.Sprintf("notifications = $%d", argIdx))
+		args = append(args, notificationsJSON)
+		argIdx++
+	}
+
 	if len(updateFields) == 0 {
 		return nil, fmt.Errorf("no fields to update")
 	}
@@ -964,6 +1110,327 @@ func (r *mutationResolver) DeleteLearningPlan(ctx context.Context, id uuid.UUID)
 // GenerateSchedule is the resolver for the generateSchedule field.
 func (r *mutationResolver) GenerateSchedule(ctx context.Context, planID uuid.UUID) ([]*model.Event, error) {
 	panic(fmt.Errorf("not implemented: GenerateSchedule - generateSchedule"))
+}
+
+// CreateLearningPlanNode creates a new node in a learning plan DAG
+func (r *mutationResolver) CreateLearningPlanNode(ctx context.Context, input model.CreateLearningPlanNodeInput) (*model.LearningPlanNode, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify the learning plan belongs to the user
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, "SELECT user_id FROM learning_plans WHERE id = $1", input.LearningPlanID)
+	if err != nil {
+		return nil, fmt.Errorf("learning plan not found: %w", err)
+	}
+	if planOwner != userID {
+		return nil, fmt.Errorf("unauthorized access to learning plan")
+	}
+
+	nodeID := uuid.New()
+	now := time.Now()
+
+	query := `
+		INSERT INTO learning_plan_nodes (
+			id, learning_plan_id, skill_id, title, description,
+			planned_hours, completed_hours, position_x, position_y,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`
+
+	_, err = r.DB.Exec(query, nodeID, input.LearningPlanID, input.SkillID,
+		input.Title, input.Description, input.PlannedHours, 0,
+		input.PositionX, input.PositionY, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create learning plan node: %w", err)
+	}
+
+	node := &model.LearningPlanNode{
+		ID:              nodeID,
+		LearningPlanID: input.LearningPlanID,
+		SkillID:        input.SkillID,
+		Title:          input.Title,
+		Description:    input.Description,
+		PlannedHours:   input.PlannedHours,
+		CompletedHours: 0,
+		PositionX:      input.PositionX,
+		PositionY:      input.PositionY,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	// If skill_id is provided, fetch the skill
+	if input.SkillID != nil {
+		var skill model.Skill
+		err = r.DB.Get(&skill, `
+			SELECT id, user_id, name, level, notes, created_at, updated_at
+			FROM skills WHERE id = $1
+		`, *input.SkillID)
+		if err == nil {
+			node.Skill = &skill
+		}
+	}
+
+	return node, nil
+}
+
+// UpdateLearningPlanNode updates a learning plan node
+func (r *mutationResolver) UpdateLearningPlanNode(ctx context.Context, id uuid.UUID, input model.UpdateLearningPlanNodeInput) (*model.LearningPlanNode, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify access through learning plan ownership
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, `
+		SELECT lp.user_id FROM learning_plans lp
+		JOIN learning_plan_nodes lpn ON lpn.learning_plan_id = lp.id
+		WHERE lpn.id = $1
+	`, id)
+	if err != nil {
+		return nil, fmt.Errorf("node not found: %w", err)
+	}
+	if planOwner != userID {
+		return nil, fmt.Errorf("unauthorized access to learning plan node")
+	}
+
+	// Build dynamic update query
+	updates := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if input.SkillID != nil {
+		updates = append(updates, fmt.Sprintf("skill_id = $%d", argIdx))
+		args = append(args, *input.SkillID)
+		argIdx++
+	}
+
+	if input.Title != nil {
+		updates = append(updates, fmt.Sprintf("title = $%d", argIdx))
+		args = append(args, *input.Title)
+		argIdx++
+	}
+
+	if input.Description != nil {
+		updates = append(updates, fmt.Sprintf("description = $%d", argIdx))
+		args = append(args, *input.Description)
+		argIdx++
+	}
+
+	if input.PlannedHours != nil {
+		updates = append(updates, fmt.Sprintf("planned_hours = $%d", argIdx))
+		args = append(args, *input.PlannedHours)
+		argIdx++
+	}
+
+	if input.CompletedHours != nil {
+		updates = append(updates, fmt.Sprintf("completed_hours = $%d", argIdx))
+		args = append(args, *input.CompletedHours)
+		argIdx++
+	}
+
+	if input.PositionX != nil {
+		updates = append(updates, fmt.Sprintf("position_x = $%d", argIdx))
+		args = append(args, *input.PositionX)
+		argIdx++
+	}
+
+	if input.PositionY != nil {
+		updates = append(updates, fmt.Sprintf("position_y = $%d", argIdx))
+		args = append(args, *input.PositionY)
+		argIdx++
+	}
+
+	if len(updates) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	updates = append(updates, fmt.Sprintf("updated_at = $%d", argIdx))
+	args = append(args, time.Now())
+	argIdx++
+
+	args = append(args, id)
+	query := fmt.Sprintf(`
+		UPDATE learning_plan_nodes SET %s
+		WHERE id = $%d
+	`, strings.Join(updates, ", "), argIdx)
+
+	_, err = r.DB.Exec(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update node: %w", err)
+	}
+
+	// Fetch updated node
+	var node model.LearningPlanNode
+	err = r.DB.Get(&node, `
+		SELECT id, learning_plan_id, skill_id, title, description,
+		       planned_hours, completed_hours, position_x, position_y,
+		       created_at, updated_at
+		FROM learning_plan_nodes WHERE id = $1
+	`, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated node: %w", err)
+	}
+
+	// Fetch skill if present
+	if node.SkillID != nil {
+		var skill model.Skill
+		err = r.DB.Get(&skill, `
+			SELECT id, user_id, name, level, notes, created_at, updated_at
+			FROM skills WHERE id = $1
+		`, *node.SkillID)
+		if err == nil {
+			node.Skill = &skill
+		}
+	}
+
+	return &node, nil
+}
+
+// DeleteLearningPlanNode deletes a learning plan node
+func (r *mutationResolver) DeleteLearningPlanNode(ctx context.Context, id uuid.UUID) (bool, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify access through learning plan ownership
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, `
+		SELECT lp.user_id FROM learning_plans lp
+		JOIN learning_plan_nodes lpn ON lpn.learning_plan_id = lp.id
+		WHERE lpn.id = $1
+	`, id)
+	if err != nil {
+		return false, fmt.Errorf("node not found: %w", err)
+	}
+	if planOwner != userID {
+		return false, fmt.Errorf("unauthorized access to learning plan node")
+	}
+
+	result, err := r.DB.Exec("DELETE FROM learning_plan_nodes WHERE id = $1", id)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete node: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	return rowsAffected > 0, nil
+}
+
+// CreateLearningPlanEdge creates a new edge/dependency in a learning plan DAG
+func (r *mutationResolver) CreateLearningPlanEdge(ctx context.Context, input model.CreateLearningPlanEdgeInput) (*model.LearningPlanEdge, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify the learning plan belongs to the user
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, "SELECT user_id FROM learning_plans WHERE id = $1", input.LearningPlanID)
+	if err != nil {
+		return nil, fmt.Errorf("learning plan not found: %w", err)
+	}
+	if planOwner != userID {
+		return nil, fmt.Errorf("unauthorized access to learning plan")
+	}
+
+	// Verify both nodes belong to the same learning plan
+	var sourceCount, targetCount int
+	err = r.DB.Get(&sourceCount, `
+		SELECT COUNT(*) FROM learning_plan_nodes
+		WHERE id = $1 AND learning_plan_id = $2
+	`, input.SourceNodeID, input.LearningPlanID)
+	if err != nil || sourceCount == 0 {
+		return nil, fmt.Errorf("source node not found in learning plan")
+	}
+
+	err = r.DB.Get(&targetCount, `
+		SELECT COUNT(*) FROM learning_plan_nodes
+		WHERE id = $1 AND learning_plan_id = $2
+	`, input.TargetNodeID, input.LearningPlanID)
+	if err != nil || targetCount == 0 {
+		return nil, fmt.Errorf("target node not found in learning plan")
+	}
+
+	edgeID := uuid.New()
+	now := time.Now()
+
+	query := `
+		INSERT INTO learning_plan_edges (
+			id, learning_plan_id, source_node_id, target_node_id, created_at
+		) VALUES ($1, $2, $3, $4, $5)
+	`
+
+	_, err = r.DB.Exec(query, edgeID, input.LearningPlanID, input.SourceNodeID, input.TargetNodeID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create learning plan edge: %w", err)
+	}
+
+	return &model.LearningPlanEdge{
+		ID:              edgeID,
+		LearningPlanID: input.LearningPlanID,
+		SourceNodeID:   input.SourceNodeID,
+		TargetNodeID:   input.TargetNodeID,
+		CreatedAt:      now,
+	}, nil
+}
+
+// DeleteLearningPlanEdge deletes a learning plan edge
+func (r *mutationResolver) DeleteLearningPlanEdge(ctx context.Context, id uuid.UUID) (bool, error) {
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify access through learning plan ownership
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, `
+		SELECT lp.user_id FROM learning_plans lp
+		JOIN learning_plan_edges lpe ON lpe.learning_plan_id = lp.id
+		WHERE lpe.id = $1
+	`, id)
+	if err != nil {
+		return false, fmt.Errorf("edge not found: %w", err)
+	}
+	if planOwner != userID {
+		return false, fmt.Errorf("unauthorized access to learning plan edge")
+	}
+
+	result, err := r.DB.Exec("DELETE FROM learning_plan_edges WHERE id = $1", id)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete edge: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	return rowsAffected > 0, nil
 }
 
 // CreateNote creates a new note
@@ -1149,12 +1616,12 @@ func (r *mutationResolver) CreateReminder(ctx context.Context, input model.Creat
 	// Set default values
 	priority := "medium"
 	if input.Priority != nil {
-		priority = string(*input.Priority)
+		priority = strings.ToLower(string(*input.Priority))
 	}
 
 	repeatPattern := "none"
 	if input.RepeatPattern != nil {
-		repeatPattern = string(*input.RepeatPattern)
+		repeatPattern = strings.ToLower(string(*input.RepeatPattern))
 	}
 
 	notificationChannels := []string{"browser"}
@@ -1187,13 +1654,12 @@ func (r *mutationResolver) CreateReminder(ctx context.Context, input model.Creat
 	}
 
 	// Fetch created reminder
-	var reminder model.Reminder
-	err = r.DB.Get(&reminder, `
+	reminder, err := scanReminder(r.DB.QueryRow(`
 		SELECT id, user_id, title, description, due_time, completed, completed_at,
 		       priority, repeat_pattern, repeat_rule, repeat_end, event_id,
 		       notification_channels, reminder_times, tags, created_at, updated_at
 		FROM reminders WHERE id = $1
-	`, reminderID)
+	`, reminderID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch reminder: %w", err)
 	}
@@ -1216,7 +1682,7 @@ func (r *mutationResolver) CreateReminder(ctx context.Context, input model.Creat
 		}
 	}
 
-	return &reminder, nil
+	return reminder, nil
 }
 
 // UpdateReminder is the resolver for the updateReminder field.
@@ -1263,12 +1729,12 @@ func (r *mutationResolver) UpdateReminder(ctx context.Context, id uuid.UUID, inp
 	}
 	if input.Priority != nil {
 		updates = append(updates, fmt.Sprintf("priority = $%d", argIdx))
-		args = append(args, string(*input.Priority))
+		args = append(args, strings.ToLower(string(*input.Priority)))
 		argIdx++
 	}
 	if input.RepeatPattern != nil {
 		updates = append(updates, fmt.Sprintf("repeat_pattern = $%d", argIdx))
-		args = append(args, string(*input.RepeatPattern))
+		args = append(args, strings.ToLower(string(*input.RepeatPattern)))
 		argIdx++
 	}
 	if input.RepeatRule != nil {
@@ -1327,18 +1793,17 @@ func (r *mutationResolver) UpdateReminder(ctx context.Context, id uuid.UUID, inp
 	}
 
 	// Fetch updated reminder
-	var reminder model.Reminder
-	err = r.DB.Get(&reminder, `
+	reminder, err := scanReminder(r.DB.QueryRow(`
 		SELECT id, user_id, title, description, due_time, completed, completed_at,
 		       priority, repeat_pattern, repeat_rule, repeat_end, event_id,
 		       notification_channels, reminder_times, tags, created_at, updated_at
 		FROM reminders WHERE id = $1
-	`, id)
+	`, id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch reminder: %w", err)
 	}
 
-	return &reminder, nil
+	return reminder, nil
 }
 
 // DeleteReminder is the resolver for the deleteReminder field.
@@ -1396,18 +1861,17 @@ func (r *mutationResolver) CompleteReminder(ctx context.Context, id uuid.UUID) (
 	}
 
 	// Fetch updated reminder
-	var reminder model.Reminder
-	err = r.DB.Get(&reminder, `
+	reminder, err := scanReminder(r.DB.QueryRow(`
 		SELECT id, user_id, title, description, due_time, completed, completed_at,
 		       priority, repeat_pattern, repeat_rule, repeat_end, event_id,
 		       notification_channels, reminder_times, tags, created_at, updated_at
 		FROM reminders WHERE id = $1
-	`, id)
+	`, id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch reminder: %w", err)
 	}
 
-	return &reminder, nil
+	return reminder, nil
 }
 
 // SnoozeReminder is the resolver for the snoozeReminder field.
@@ -1423,13 +1887,12 @@ func (r *mutationResolver) SnoozeReminder(ctx context.Context, id uuid.UUID, min
 	}
 
 	// Get current reminder
-	var reminder model.Reminder
-	err = r.DB.Get(&reminder, `
+	reminder, err := scanReminder(r.DB.QueryRow(`
 		SELECT id, user_id, title, description, due_time, completed, completed_at,
 		       priority, repeat_pattern, repeat_rule, repeat_end, event_id,
 		       notification_channels, reminder_times, tags, created_at, updated_at
 		FROM reminders WHERE id = $1 AND user_id = $2
-	`, id, userID)
+	`, id, userID))
 	if err != nil {
 		return nil, fmt.Errorf("reminder not found: %w", err)
 	}
@@ -1466,7 +1929,7 @@ func (r *mutationResolver) SnoozeReminder(ctx context.Context, id uuid.UUID, min
 	reminder.DueTime = newDueTime
 	reminder.UpdatedAt = now
 
-	return &reminder, nil
+	return reminder, nil
 }
 
 // MarkNotificationSent is the resolver for the markNotificationSent field.
@@ -1576,12 +2039,12 @@ func (r *queryResolver) Skills(ctx context.Context) ([]*model.Skill, error) {
 	err = r.DB.Select(&skills, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills 
 		WHERE user_id = $1
 		ORDER BY name ASC
@@ -1609,12 +2072,12 @@ func (r *queryResolver) Skill(ctx context.Context, id uuid.UUID) (*model.Skill, 
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1 AND user_id = $2
 	`, id, userID)
 	if err != nil {
@@ -1640,17 +2103,17 @@ func (r *queryResolver) Activities(ctx context.Context, filter *model.ActivityFi
 	query := `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			paused_at as pausedat,
-			paused_duration as pausedduration,
-			created_at as createdat
+			started_at,
+			paused_at,
+			paused_duration,
+			created_at
 		FROM activities 
 		WHERE user_id = $1
 	`
@@ -1776,17 +2239,17 @@ func (r *queryResolver) ActiveSession(ctx context.Context) (*model.Activity, err
 	err = r.DB.Get(&activity, `
 		SELECT 
 			id,
-			user_id as userid,
-			skill_id as skillid,
+			user_id,
+			skill_id,
 			name,
 			duration,
 			date,
 			notes,
 			status,
-			started_at as startedat,
-			paused_at as pausedat,
-			paused_duration as pausedduration,
-			created_at as createdat
+			started_at,
+			paused_at,
+			paused_duration,
+			created_at
 		FROM activities
 		WHERE user_id = $1 AND status IN ('ACTIVE', 'PAUSED')
 		ORDER BY started_at DESC
@@ -1803,12 +2266,12 @@ func (r *queryResolver) ActiveSession(ctx context.Context) (*model.Activity, err
 	err = r.DB.Get(&skill, `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			name,
 			level,
 			notes,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM skills WHERE id = $1
 	`, activity.SkillID)
 	if err != nil {
@@ -1839,25 +2302,25 @@ func (r *queryResolver) Events(ctx context.Context, startDate time.Time, endDate
 	query := `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			title,
 			description,
 			type,
-			start_time as starttime,
-			end_time as endtime,
-			all_day as allday,
+			start_time,
+			end_time,
+			all_day,
 			recurrence,
-			recurrence_rule as recurrencerule,
-			recurrence_end as recurrenceend,
-			skill_id as skillid,
-			activity_id as activityid,
-			learning_plan_id as learningplanid,
+			recurrence_rule,
+			recurrence_end,
+			skill_id,
+			activity_id,
+			learning_plan_id,
 			color,
 			location,
 			COALESCE(attendees, '{}') as attendees,
 			COALESCE(tags, '{}') as tags,
-			created_at as createdat,
-			updated_at as updatedat
+			created_at,
+			updated_at
 		FROM events
 		WHERE user_id = $1 AND start_time >= $2 AND start_time <= $3
 	`
@@ -2050,14 +2513,14 @@ func (r *queryResolver) Notes(ctx context.Context, filter *model.NoteFilter, lim
 	queryStr := `
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			title,
 			content,
 			COALESCE(tags, '{}') as tags,
-			linked_type as linkedtype,
-			linked_id as linkedid,
-			created_at as createdat,
-			updated_at as updatedat
+			linked_type,
+			linked_id,
+			created_at,
+			updated_at
 		FROM notes
 		WHERE user_id = $1
 	`
@@ -2181,14 +2644,14 @@ func (r *queryResolver) Note(ctx context.Context, id uuid.UUID) (*model.Note, er
 	err = r.DB.QueryRow(`
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			title,
 			content,
 			COALESCE(tags, '{}') as tags,
-			linked_type as linkedtype,
-			linked_id as linkedid,
-			created_at as createdat,
-			updated_at as updatedat
+			linked_type,
+			linked_id,
+			created_at,
+			updated_at
 		FROM notes
 		WHERE id = $1 AND user_id = $2
 	`, id, userID).Scan(
@@ -2231,14 +2694,14 @@ func (r *queryResolver) SearchNotes(ctx context.Context, query string) ([]*model
 	rows, err := r.DB.Query(`
 		SELECT 
 			id,
-			user_id as userid,
+			user_id,
 			title,
 			content,
 			COALESCE(tags, '{}') as tags,
-			linked_type as linkedtype,
-			linked_id as linkedid,
-			created_at as createdat,
-			updated_at as updatedat,
+			linked_type,
+			linked_id,
+			created_at,
+			updated_at,
 			ts_rank(search_vector, to_tsquery('english', $2)) AS rank
 		FROM notes
 		WHERE user_id = $1 
@@ -2366,12 +2829,11 @@ func (r *queryResolver) Reminders(ctx context.Context, filter *model.ReminderFil
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		var reminder model.Reminder
-		err := rows.StructScan(&reminder)
+		reminder, err := scanReminderFromRows(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
-		reminders = append(reminders, &reminder)
+		reminders = append(reminders, reminder)
 	}
 
 	// Get total count
@@ -2403,19 +2865,18 @@ func (r *queryResolver) Reminder(ctx context.Context, id uuid.UUID) (*model.Remi
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
 
-	var reminder model.Reminder
-	err = r.DB.Get(&reminder, `
+	reminder, err := scanReminder(r.DB.QueryRow(`
 		SELECT id, user_id, title, description, due_time, completed, completed_at,
 		       priority, repeat_pattern, repeat_rule, repeat_end, event_id,
 		       notification_channels, reminder_times, tags, created_at, updated_at
 		FROM reminders
 		WHERE id = $1 AND user_id = $2
-	`, id, userID)
+	`, id, userID))
 	if err != nil {
 		return nil, fmt.Errorf("reminder not found: %w", err)
 	}
 
-	return &reminder, nil
+	return reminder, nil
 }
 
 // UpcomingReminders is the resolver for the upcomingReminders field.
@@ -2451,12 +2912,11 @@ func (r *queryResolver) UpcomingReminders(ctx context.Context, limit *int) ([]*m
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		var reminder model.Reminder
-		err := rows.StructScan(&reminder)
+		reminder, err := scanReminderFromRows(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
-		reminders = append(reminders, &reminder)
+		reminders = append(reminders, reminder)
 	}
 
 	return reminders, nil
@@ -2489,12 +2949,11 @@ func (r *queryResolver) OverdueReminders(ctx context.Context) ([]*model.Reminder
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		var reminder model.Reminder
-		err := rows.StructScan(&reminder)
+		reminder, err := scanReminderFromRows(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
-		reminders = append(reminders, &reminder)
+		reminders = append(reminders, reminder)
 	}
 
 	return reminders, nil
@@ -2718,6 +3177,64 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
+// LearningPlan returns LearningPlanResolver implementation.
+func (r *Resolver) LearningPlan() LearningPlanResolver { return &learningPlanResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
+type learningPlanResolver struct{ *Resolver }
+
+// LearningPlanResolver defines the resolver interface for LearningPlan fields
+type LearningPlanResolver interface {
+	Nodes(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanNode, error)
+	Edges(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanEdge, error)
+}
+
+// Nodes resolves the nodes field for a learning plan
+func (r *learningPlanResolver) Nodes(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanNode, error) {
+	var nodes []*model.LearningPlanNode
+	err := r.DB.Select(&nodes, `
+		SELECT id, learning_plan_id, skill_id, title, description,
+		       planned_hours, completed_hours, position_x, position_y,
+		       created_at, updated_at
+		FROM learning_plan_nodes
+		WHERE learning_plan_id = $1
+		ORDER BY created_at ASC
+	`, obj.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch learning plan nodes: %w", err)
+	}
+
+	// Fetch skills for nodes that have skill_id set
+	for _, node := range nodes {
+		if node.SkillID != nil {
+			var skill model.Skill
+			err = r.DB.Get(&skill, `
+				SELECT id, user_id, name, level, notes, created_at, updated_at
+				FROM skills WHERE id = $1
+			`, *node.SkillID)
+			if err == nil {
+				node.Skill = &skill
+			}
+		}
+	}
+
+	return nodes, nil
+}
+
+// Edges resolves the edges field for a learning plan
+func (r *learningPlanResolver) Edges(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanEdge, error) {
+	var edges []*model.LearningPlanEdge
+	err := r.DB.Select(&edges, `
+		SELECT id, learning_plan_id, source_node_id, target_node_id, created_at
+		FROM learning_plan_edges
+		WHERE learning_plan_id = $1
+		ORDER BY created_at ASC
+	`, obj.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch learning plan edges: %w", err)
+	}
+
+	return edges, nil
+}

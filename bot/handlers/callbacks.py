@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 SELECTING_SKILL, ENTERING_SESSION_NAME = range(2)
 
 
+def get_user_client(context: ContextTypes.DEFAULT_TYPE):
+    """Get authenticated GraphQL client for the user"""
+    return context.user_data.get('gql_client')
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Main callback handler for all inline button presses
@@ -22,11 +27,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()  # Acknowledge the button press
     
+    # Check authentication
+    if not context.user_data.get('auth_token'):
+        await query.edit_message_text("🔒 Session expired. Please /start to login again.")
+        return
+    
     callback_data = query.data
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     if not gql_client:
-        await query.edit_message_text("❌ Bot not initialized. Try /start again.")
+        await query.edit_message_text("❌ Authentication error. Please /logout and login again.")
         return
     
     # Route to specific handlers
@@ -59,7 +69,7 @@ async def show_skill_selection(update: Update, context: ContextTypes.DEFAULT_TYP
     Show list of skills to select for starting a session
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     skills_query = """
     query GetSkills {
@@ -115,7 +125,7 @@ async def start_session_for_skill(update: Update, context: ContextTypes.DEFAULT_
     Start a new session for the selected skill
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     # Extract skill ID from callback_data (works for both start_skill: and quick_start:)
     skill_id = callback_data.split(':')[1]
@@ -205,7 +215,7 @@ async def pause_session(update: Update, context: ContextTypes.DEFAULT_TYPE, call
     Pause the active session
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     session_id = callback_data.split(':')[1]
     
@@ -259,7 +269,7 @@ async def resume_session(update: Update, context: ContextTypes.DEFAULT_TYPE, cal
     Resume a paused session
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     session_id = callback_data.split(':')[1]
     
@@ -313,7 +323,7 @@ async def stop_session(update: Update, context: ContextTypes.DEFAULT_TYPE, callb
     Stop the active session
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     session_id = callback_data.split(':')[1]
     
@@ -376,7 +386,7 @@ async def handle_schedule_navigation(update: Update, context: ContextTypes.DEFAU
     Handle schedule navigation (yesterday/tomorrow/week/month)
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     action = callback_data.split(':')[1]
     
@@ -498,7 +508,7 @@ async def handle_stats_period(update: Update, context: ContextTypes.DEFAULT_TYPE
     Handle stats period selection (today/week/month)
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     period = callback_data.split(':')[1]
     
@@ -583,7 +593,7 @@ async def handle_note_action(update: Update, context: ContextTypes.DEFAULT_TYPE,
     Handle note-related actions
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     parts = callback_data.split(':')
     action = parts[1]
@@ -627,7 +637,7 @@ async def show_notes_list(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     Show list of notes
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     notes_query = """
     query GetNotes($limit: Int!) {
@@ -699,7 +709,7 @@ async def show_note_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, n
     Show detailed view of a note
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     note_query = """
     query GetNote($id: UUID!) {
@@ -766,7 +776,7 @@ async def delete_note(update: Update, context: ContextTypes.DEFAULT_TYPE, note_i
     Delete a note
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     mutation = """
     mutation DeleteNote($id: UUID!) {
@@ -794,7 +804,7 @@ async def handle_event_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     Handle event-related actions
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     parts = callback_data.split(':')
     action = parts[1]
@@ -856,7 +866,7 @@ async def create_event_from_template(update: Update, context: ContextTypes.DEFAU
     Create an event from a template
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     from datetime import datetime, timedelta
     
@@ -907,7 +917,7 @@ async def show_event_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     Show detailed view of an event
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     event_query = """
     query GetEvent($id: UUID!) {
@@ -993,7 +1003,7 @@ async def delete_event(update: Update, context: ContextTypes.DEFAULT_TYPE, event
     Delete an event
     """
     query = update.callback_query
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = get_user_client(context)
     
     mutation = """
     mutation DeleteEvent($id: UUID!) {

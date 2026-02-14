@@ -204,7 +204,6 @@ docker run -p 8080:8080 --env-file .env lifetrack-backend
 
 - [ ] Change JWT_SECRET to strong random value
 - [ ] Use PostgreSQL with SSL (sslmode=require)
-- [ ] Enable CORS for frontend domain only
 - [ ] Set up reverse proxy (nginx/Caddy) with HTTPS
 - [ ] Configure rate limiting
 - [ ] Set up monitoring and logging

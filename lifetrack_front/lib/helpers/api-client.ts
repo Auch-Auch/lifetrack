@@ -4,7 +4,7 @@ import { Client, cacheExchange, fetchExchange, makeOperation } from 'urql'
 import { authExchange } from '@urql/exchange-auth'
 import { getToken, removeToken } from './auth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/query'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api/graphql'
 
 // Create urql client with auth support
 export const createClient = () => {

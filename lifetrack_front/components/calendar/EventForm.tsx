@@ -10,7 +10,8 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { eventSchema, type EventFormData } from '../../lib/schemas/event';
+import { z } from 'zod';
+import { eventSchema, updateEventSchema, type EventFormData } from '../../lib/schemas/event';
 import type { Event, EventType, RecurrencePattern } from '../../lib/events';
 import type { Skill } from '../../lib/skills';
 import { useEventStore } from '../../stores/eventStore';
@@ -64,6 +65,30 @@ export default function EventForm({
     return rfc3339.slice(0, 16);
   };
   
+  // Convert datetime-local format to RFC3339
+  const convertToRFC3339 = (dateTimeLocal: string) => {
+    if (!dateTimeLocal) return dateTimeLocal;
+    // datetime-local format: "2026-02-13T14:30"
+    // Add seconds and 'Z' for UTC: "2026-02-13T14:30:00Z"
+    return `${dateTimeLocal}:00Z`;
+  };
+  
+  // Preprocessing schema to convert datetime-local to RFC3339 before validation
+  // Use updateEventSchema for edits (all fields optional) or eventSchema for create
+  const schema = event ? updateEventSchema : eventSchema;
+  const preprocessedSchema = z.preprocess(
+    (data: any) => {
+      if (!data) return data;
+      return {
+        ...data,
+        startTime: data.startTime ? convertToRFC3339(data.startTime) : data.startTime,
+        endTime: data.endTime ? convertToRFC3339(data.endTime) : data.endTime,
+        recurrenceEnd: data.recurrenceEnd ? convertToRFC3339(data.recurrenceEnd) : data.recurrenceEnd,
+      };
+    },
+    schema
+  );
+  
   // Initialize form with react-hook-form + zod
   const {
     register,
@@ -72,7 +97,7 @@ export default function EventForm({
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<Partial<EventFormData>>({
-    resolver: zodResolver(eventSchema) as never,
+    resolver: zodResolver(preprocessedSchema) as never,
     defaultValues: event
       ? {
           title: event.title,
@@ -88,10 +113,14 @@ export default function EventForm({
           recurrenceEnd: event.recurrenceEnd ? convertToDateTimeLocal(event.recurrenceEnd) : undefined,
           skillId: event.skillId,
           notifications: event.notifications ? {
-            enabled: event.notifications.enabled,
-            channels: event.notifications.channels as ('browser' | 'telegram' | 'both')[],
-            reminderMinutes: event.notifications.reminderMinutes,
-          } : undefined,
+            enabled: event.notifications.enabled ?? true,
+            channels: (event.notifications.channels || ['browser']) as ('browser' | 'telegram' | 'both')[],
+            reminderMinutes: event.notifications.reminderMinutes || [15],
+          } : {
+            enabled: true,
+            channels: ['browser' as const],
+            reminderMinutes: [15],
+          },
         }
       : {
           title: '',
@@ -117,31 +146,17 @@ export default function EventForm({
   const watchType = watch('type');
   const watchColor = watch('color');
   
-  // Convert datetime-local format to RFC3339
-  const convertToRFC3339 = (dateTimeLocal: string) => {
-    if (!dateTimeLocal) return dateTimeLocal;
-    // datetime-local format: "2026-02-13T14:30"
-    // Add seconds and 'Z' for UTC: "2026-02-13T14:30:00Z"
-    return `${dateTimeLocal}:00Z`;
-  };
-  
   // Handle form submission
   const onSubmit = async (data: Partial<EventFormData>) => {
     try {
-      // Convert datetime-local format to RFC3339 for backend
-      const submitData = {
-        ...data,
-        startTime: data.startTime ? convertToRFC3339(data.startTime) : undefined,
-        endTime: data.endTime ? convertToRFC3339(data.endTime) : undefined,
-        recurrenceEnd: data.recurrenceEnd ? convertToRFC3339(data.recurrenceEnd) : undefined,
-      };
-      
+      // Data is already in RFC3339 format from preprocessing
+      // Empty strings are converted to undefined by schema preprocessing
       if (event) {
         // Update existing event
-        updateEvent(event.id, submitData);
+        await updateEvent(event.id, data);
       } else {
-        // Create new event - validate required fields
-        createEvent(submitData as any);
+        // Create new event
+        await createEvent(data as any);
       }
       
       onSuccess?.();

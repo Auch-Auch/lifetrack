@@ -39,7 +39,7 @@
 - JWT authentication
 
 **Infrastructure:**
-- Caddy 2 (Reverse proxy, CORS, SSL/TLS)
+- Caddy 2 (Reverse proxy, SSL/TLS)
 - Docker & Docker Compose
 
 **Bot:**
@@ -161,7 +161,7 @@ python main.py
        ▼                           ▼
 ┌──────────────────────────────────────────────────────────┐
 │              Caddy Reverse Proxy                          │
-│  (CORS, Security Headers, SSL/TLS, Rate Limiting)        │
+│  (Security Headers, SSL/TLS, Rate Limiting)        │
 │                    Port 80/443                           │
 └───────┬──────────────────────────────────────────────────┘
         │
@@ -188,7 +188,6 @@ python main.py
 - All external traffic goes through Caddy (single entry point)
 - Backend and database not directly accessible
 - Automatic HTTPS with Let's Encrypt (when configured)
-- CORS properly restricted to allowed origins
 - Security headers on all responses
 
 ## 🔐 Security
@@ -198,7 +197,6 @@ python main.py
 - ✅ No default passwords (all secrets required)
 - ✅ JWT-based authentication
 - ✅ Service-to-service authentication for bot
-- ✅ Proper CORS configuration (restricted origins)
 - ✅ Security headers (XSS, clickjacking, MIME sniffing protection)
 - ✅ Database not exposed to host network
 - ✅ Backend not directly accessible
@@ -224,8 +222,6 @@ SERVICE_JWT=<generate-with-backend-tool>
 # Bot
 TELEGRAM_BOT_TOKEN=<get-from-botfather>
 
-# Caddy/CORS
-ALLOWED_ORIGINS=http://localhost:3000  # Change for production
 NEXT_PUBLIC_API_URL=/query
 
 # Optional

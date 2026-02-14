@@ -13,15 +13,33 @@ logger = logging.getLogger(__name__)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Handle text messages for creating notes, events, etc.
+    Handle text messages for creating notes, events, linking accounts, etc.
     """
-    gql_client = context.bot_data.get('gql_client')
-    
-    if not gql_client:
-        return
-    
     # Check if we're awaiting specific input
     user_data = context.user_data
+    
+    # Handle login flow FIRST (before checking for gql_client)
+    if user_data.get('awaiting_email'):
+        await process_email(update, context)
+        return
+    
+    if user_data.get('awaiting_password'):
+        # For password, we need the base gql_client from bot_data
+        base_client = context.bot_data.get('gql_client')
+        if not base_client:
+            await update.message.reply_text("❌ Bot not initialized properly.")
+            return
+        await process_password(update, context, base_client)
+        return
+    
+    # Now check for authenticated client for all other operations
+    gql_client = context.user_data.get('gql_client')
+    
+    if not gql_client:
+        await update.message.reply_text(
+            "🔒 Please login first using /start"
+        )
+        return
     
     if user_data.get('awaiting_note'):
         await create_note_from_message(update, context)
@@ -51,12 +69,125 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
 
+async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Process email input during login"""
+    email = update.message.text.strip()
+    
+    # Basic email validation
+    if '@' not in email or '.' not in email:
+        await update.message.reply_text(
+            "❌ Invalid email format. Please send a valid email address."
+        )
+        return
+    
+    # Store email and ask for password
+    context.user_data['login_email'] = email
+    context.user_data['awaiting_email'] = False
+    context.user_data['awaiting_password'] = True
+    
+    await update.message.reply_text(
+        "🔐 Now send your password.\n\n"
+        "⚠️ Your password will be deleted from chat immediately for security.",
+        parse_mode='Markdown'
+    )
+
+
+async def process_password(update: Update, context: ContextTypes.DEFAULT_TYPE, gql_client) -> None:
+    """Process password and attempt login"""
+    password = update.message.text.strip()
+    email = context.user_data.get('login_email')
+    
+    # Delete the password message for security
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    
+    if not email:
+        await update.message.reply_text("❌ Error: Email not found. Please run /start again.")
+        context.user_data.clear()
+        return
+    
+    # Attempt login
+    try:
+        from backend_client.simple_client import GraphQLClient
+        
+        # Create a new client without auth token for login
+        login_client = GraphQLClient(gql_client.url, None, gql_client.timeout)
+        auth_payload = await login_client.login(email, password)
+        
+        # Store auth info
+        context.user_data['auth_token'] = auth_payload['token']
+        context.user_data['user_id'] = auth_payload['user']['id']
+        context.user_data['user_email'] = auth_payload['user']['email']
+        context.user_data['user_name'] = auth_payload['user'].get('name', 'User')
+        
+        # Clean up login state
+        context.user_data.pop('login_email', None)
+        context.user_data.pop('awaiting_password', None)
+        
+        # Create authenticated client for this user
+        user_client = GraphQLClient(gql_client.url, auth_payload['token'], gql_client.timeout)
+        context.user_data['gql_client'] = user_client
+        
+        # Link telegram account
+        telegram_id = update.effective_user.id
+        telegram_username = update.effective_user.username or update.effective_user.first_name
+        
+        try:
+            link_query = """
+            mutation LinkTelegram($telegramId: Int!, $username: String) {
+                linkTelegram(telegramId: $telegramId, telegramUsername: $username) {
+                    id
+                    telegramId
+                }
+            }
+            """
+            await user_client.execute(link_query, {
+                "telegramId": telegram_id,
+                "username": telegram_username
+            })
+        except Exception as e:
+            logger.warning(f"Failed to auto-link telegram: {e}")
+        
+        # Add user to active users for notification tracking
+        active_users = context.bot_data.get('active_users', {})
+        active_users[telegram_id] = {
+            'gql_client': user_client,
+            'user_id': auth_payload['user']['id'],
+            'name': auth_payload['user'].get('name', 'User')
+        }
+        logger.info(f"Added user {telegram_id} to active users for notifications")
+        
+        await update.effective_chat.send_message(
+            f"✅ <b>Login Successful!</b>\n\n"
+            f"Welcome, {auth_payload['user'].get('name', 'User')}!\n"
+            f"📧 {auth_payload['user']['email']}\n\n"
+            f"You can now use all bot commands.\n\n"
+            f"⚡ Try:\n"
+            f"• /session - Manage learning sessions\n"
+            f"• /schedule - View calendar\n"
+            f"• /stats - Check progress",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        context.user_data.clear()
+        await update.effective_chat.send_message(
+            f"❌ <b>Login Failed</b>\n\n"
+            f"{str(e)}\n\n"
+            f"Please check your credentials and try again with /start",
+            parse_mode='HTML'
+        )
+
+
 async def create_note_from_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Create a note from user message
     """
     message_text = update.message.text
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = context.user_data.get('gql_client')
     
     # Parse the message
     lines = message_text.strip().split('\n')
@@ -131,7 +262,7 @@ async def search_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     Search notes by keywords
     """
     query_text = update.message.text
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = context.user_data.get('gql_client')
     
     search_query = """
     query SearchNotes($query: String!) {
@@ -185,7 +316,7 @@ async def create_event_from_message(update: Update, context: ContextTypes.DEFAUL
     Create an event from user message
     """
     message_text = update.message.text
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = context.user_data.get('gql_client')
     
     lines = message_text.strip().split('\n')
     
@@ -294,7 +425,7 @@ async def finalize_event_from_template(update: Update, context: ContextTypes.DEF
     Finalize event creation from template with custom title
     """
     message_text = update.message.text.strip()
-    gql_client = context.bot_data.get('gql_client')
+    gql_client = context.user_data.get('gql_client')
     
     template = context.user_data.get('event_template', {})
     

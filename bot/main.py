@@ -1,10 +1,12 @@
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from handlers import commands, ui_commands, callbacks, message_handlers
+from handlers.notifications import start_notification_loop
 from backend_client.simple_client import GraphQLClient
 from config import Config
 
@@ -42,12 +44,24 @@ async def post_init(application: Application) -> None:
     # )
     # application.bot_data['rag_store'] = rag_store
     
-    # Initialize GraphQL client
-    logger.info("Initializing GraphQL client...")
-    gql_client = GraphQLClient(Config.BACKEND_URL, Config.SERVICE_JWT)
-    application.bot_data['gql_client'] = gql_client
+    # Initialize unauthenticated client for user commands (users will auth per-session)
+    logger.info("Initializing base GraphQL client...")
+    base_client = GraphQLClient(Config.BACKEND_URL, None)
+    application.bot_data['gql_client'] = base_client
     
-    logger.info("Bot initialization complete (command-based UI mode)")
+    # Initialize active users dict for notification tracking
+    # {telegram_id: {'gql_client': client, 'user_id': uuid, 'name': str}}
+    application.bot_data['active_users'] = {}
+    
+    # Start notification loop in background
+    logger.info("Starting notification handler...")
+    asyncio.create_task(start_notification_loop(
+        application.bot, 
+        application.bot_data['active_users'], 
+        interval=60
+    ))
+    
+    logger.info("Bot initialization complete (per-user auth with notifications)")
 
 
 def main() -> None:
@@ -65,6 +79,8 @@ def main() -> None:
     # Register command handlers
     application.add_handler(CommandHandler("start", commands.start))
     application.add_handler(CommandHandler("help", commands.help_command))
+    application.add_handler(CommandHandler("link", commands.link))
+    application.add_handler(CommandHandler("logout", commands.logout))
     
     # UI-based commands (new command-first approach)
     application.add_handler(CommandHandler("session", ui_commands.session))

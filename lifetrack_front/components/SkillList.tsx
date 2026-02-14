@@ -63,11 +63,9 @@ export default function SkillList({ items, pageSize = 6, linkToSkill = true }: P
                   )}
                 </div>
               </div>
-              {skill.notes && (
                 <p className="text-sm text-[hsl(var(--muted-foreground))] line-clamp-2">
-                  {skill.notes}
+                  {skill.notes || skill.name}
                 </p>
-              )}
             </Card>
           )
 

@@ -15,24 +15,70 @@ logger = logging.getLogger(__name__)
 
 
 class GraphQLClient:
-    """Simplified GraphQL client for executing raw queries"""
+    """Simplified GraphQL client for executing raw queries with per-user auth"""
     
-    def __init__(self, url: str, service_jwt: str, timeout: int = 10):
+    def __init__(self, url: str, auth_token: Optional[str] = None, timeout: int = 10):
         self.url = url
-        self.service_jwt = service_jwt
+        self.auth_token = auth_token
+        self.timeout = timeout
+        self._client = None
+        self._update_client()
+    
+    def _update_client(self):
+        """Update client with current auth token"""
+        headers = {}
+        if self.auth_token:
+            headers['Authorization'] = f'Bearer {self.auth_token}'
         
-        # Configure transport with auth header and timeout
         transport = AIOHTTPTransport(
-            url=url,
-            headers={'Authorization': f'Bearer {service_jwt}'},
-            timeout=timeout
+            url=self.url,
+            headers=headers,
+            timeout=self.timeout
         )
         
-        self.client = Client(
+        self._client = Client(
             transport=transport,
             fetch_schema_from_transport=False,
-            execute_timeout=timeout
+            execute_timeout=self.timeout
         )
+    
+    def set_auth_token(self, token: str):
+        """Update authentication token"""
+        self.auth_token = token
+        self._update_client()
+    
+    async def login(self, email: str, password: str) -> Dict[str, Any]:
+        """Login and get authentication token"""
+        query = """
+        mutation Login($email: String!, $password: String!) {
+            login(email: $email, password: $password) {
+                token
+                user {
+                    id
+                    email
+                    name
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "email": email,
+            "password": password
+        }
+        
+        try:
+            result = await self.execute(query, variables)
+            auth_payload = result.get('login')
+            if auth_payload and auth_payload.get('token'):
+                # Update client with new token
+                self.set_auth_token(auth_payload['token'])
+                return auth_payload
+            else:
+                raise ValueError("Login failed: no token received")
+        except Exception as e:
+            logger.error(f"Login error: {e}")
+            raise ValueError(f"Login failed: {str(e)}")
     
     async def execute(
         self,
@@ -41,7 +87,7 @@ class GraphQLClient:
     ) -> Dict[str, Any]:
         """Execute GraphQL query or mutation"""
         try:
-            async with self.client as session:
+            async with self._client as session:
                 result = await session.execute(gql(query), variable_values=variables)
                 return result
         except Exception as e:

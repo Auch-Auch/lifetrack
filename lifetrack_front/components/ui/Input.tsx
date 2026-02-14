@@ -23,13 +23,13 @@ const Input = React.forwardRef<HTMLInputElement | HTMLTextAreaElement, Props>(
     const inputId = props.id || generatedId
     
     const baseStyles = `
-      px-3 py-2 rounded-[var(--radius)] 
-      bg-[hsl(var(--background))] 
-      border border-[hsl(var(--border))]
+      px-3 py-2 rounded-[var(--radius)] text-sm
+      bg-transparent
+      border border-[hsl(var(--border)/0.3)]
       text-[hsl(var(--foreground))]
       placeholder:text-[hsl(var(--muted-foreground))]
       transition-all duration-[var(--transition-fast)]
-      focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:border-transparent
+      focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.5)] focus:border-transparent
       disabled:opacity-50 disabled:cursor-not-allowed
       ${error ? 'border-[hsl(var(--danger))] focus:ring-[hsl(var(--danger))]' : ''}
       ${className}
@@ -61,10 +61,10 @@ const Input = React.forwardRef<HTMLInputElement | HTMLTextAreaElement, Props>(
           />
         )}
         {error && (
-          <p className="text-sm text-[hsl(var(--danger))]">{error}</p>
+          <p className="text-xs text-[hsl(var(--danger))]">{error}</p>
         )}
         {helperText && !error && (
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">{helperText}</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{helperText}</p>
         )}
       </div>
     )

@@ -22,15 +22,25 @@ export const notificationSettingsSchema = z.object({
   reminderMinutes: z.array(z.number().min(0).max(10080)), // Max 1 week in minutes
 });
 
+// Optional notification settings for updates
+export const optionalNotificationSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  channels: z.array(notificationChannelSchema).optional(),
+  reminderMinutes: z.array(z.number().min(0).max(10080)).optional(),
+}).optional();
+
 // Base event schema without refinements (for partial/update operations)
 const baseEventSchema = z.object({
   title: z.string()
     .min(1, 'Title is required')
     .max(200, 'Title must be 200 characters or less'),
   
-  description: z.string()
-    .max(1000, 'Description must be 1000 characters or less')
-    .optional(),
+  description: z.preprocess(
+    (val) => (val === '' || val === null ? undefined : val),
+    z.string()
+      .max(1000, 'Description must be 1000 characters or less')
+      .optional()
+  ),
   
   type: eventTypeSchema,
   
@@ -44,19 +54,33 @@ const baseEventSchema = z.object({
   
   recurrence: recurrencePatternSchema.default('NONE'),
   
-  recurrenceRule: z.string()
-    .optional(),
+  recurrenceRule: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
   
-  recurrenceEnd: z.string()
-    .datetime({ message: 'Invalid recurrence end date' })
-    .optional(),
+  recurrenceEnd: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string()
+      .datetime({ message: 'Invalid recurrence end date' })
+      .optional()
+  ),
   
   // Optional relations
-  skillId: z.string().optional(),
-  activityId: z.string().optional(),
-  learningPlanId: z.string().optional(),
+  skillId: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
+  activityId: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
+  learningPlanId: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
   
-  notifications: notificationSettingsSchema.default({
+  notifications: notificationSettingsSchema.optional().default({
     enabled: true,
     channels: ['browser'],
     reminderMinutes: [15],
@@ -66,9 +90,12 @@ const baseEventSchema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/, 'Color must be a valid hex code')
     .optional(),
   
-  location: z.string()
-    .max(200, 'Location must be 200 characters or less')
-    .optional(),
+  location: z.preprocess(
+    (val) => (val === ''  || val === null ? undefined : val),
+    z.string()
+      .max(200, 'Location must be 200 characters or less')
+      .optional()
+  ),
   
   attendees: z.array(z.string().email())
     .optional(),
@@ -108,8 +135,29 @@ export const eventSchema = baseEventSchema.refine(
 // Type inference
 export type EventFormData = z.infer<typeof eventSchema>;
 
-// Partial schema for updates (all fields optional except type safety)
-export const updateEventSchema = baseEventSchema.partial();
+// Update schema - make notifications completely optional
+const baseUpdateEventSchema = baseEventSchema.omit({ notifications: true }).extend({
+  notifications: z.preprocess(
+    (val) => {
+      // If notifications is undefined/null, return undefined
+      if (!val) return undefined;
+      // If it's an object, ensure all required fields are present or default them
+      if (typeof val === 'object') {
+        const notif = val as any;
+        return {
+          enabled: notif.enabled ?? true,
+          channels: notif.channels ?? ['browser'],
+          reminderMinutes: notif.reminderMinutes ?? [15],
+        };
+      }
+      return val;
+    },
+    notificationSettingsSchema.optional()
+  ),
+});
+
+// Partial schema for updates (all fields optional, no cross-field refinements)
+export const updateEventSchema = baseUpdateEventSchema.partial();
 
 // Quick event creation (minimal fields)
 export const quickEventSchema = z.object({

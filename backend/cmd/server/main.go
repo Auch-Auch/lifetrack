@@ -14,12 +14,17 @@ import (
 	"github.com/aleksandr/lifetrack/backend/auth"
 	"github.com/aleksandr/lifetrack/backend/db"
 	"github.com/aleksandr/lifetrack/backend/graph"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
 const defaultPort = "8080"
 
 func main() {
+	err := godotenv.Load()
+    if err != nil {
+        log.Fatal("Error loading .env file")
+    }
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -63,7 +68,6 @@ func main() {
 	})
 
 	// Setup routes
-	// Note: CORS is now handled by Caddy reverse proxy
 	http.Handle("/", playground.Handler("LifeTrack GraphQL Playground", "/query"))
 	http.Handle("/query", auth.Middleware(authService)(srv))
 
