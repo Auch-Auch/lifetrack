@@ -27,6 +27,14 @@ models:
   Date:
     model:
       - time.Time
+  LearningPlan:
+    fields:
+      skills:
+        resolver: true
+      nodes:
+        resolver: true
+      edges:
+        resolver: true
 
 # Autobind models from database package
 autobind:

@@ -23,6 +23,18 @@
 - ✅ Tag-based organization
 - ✅ Overdue tracking
 
+### Hybrid File System (NEW)
+- 📁 On-premises file storage via Telegram
+- 📤 Upload documents and photos through bot
+- 📂 Hierarchical directory organization
+- 📥 Download files directly in Telegram
+- 🔒 User-isolated secure storage
+- 💾 Files persist even if deleted from Telegram
+- 🏷️ Tagging and descriptions
+- 🔍 Browse and navigate with interactive UI
+
+See [FILE_SYSTEM_GUIDE.md](FILE_SYSTEM_GUIDE.md) for detailed documentation.
+
 ### Tech Stack
 
 **Frontend:**
@@ -40,7 +52,7 @@
 
 **Infrastructure:**
 - Caddy 2 (Reverse proxy, SSL/TLS)
-- Docker & Docker Compose
+- Podman & podman-compose (or Docker & Docker Compose)
 
 **Bot:**
 - Python 3.11
@@ -51,8 +63,8 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker Engine 20.10+
-- Docker Compose 2.0+
+- Podman 4.0+ (or Docker Engine 20.10+)
+- podman-compose 1.0+ (or Docker Compose 2.0+)
 - 8GB+ RAM (for LLM bot)
 
 ### Installation
@@ -80,7 +92,7 @@ openssl rand -hex 32
 
 3. **Start the database first**
 ```bash
-docker-compose up -d postgres
+podman-compose up -d postgres
 ```
 
 4. **Generate service JWT for the bot**
@@ -94,7 +106,7 @@ go run cmd/generate-service-token/main.go telegram-bot
 
 5. **Start all services**
 ```bash
-docker-compose up -d
+podman-compose up -d
 ```
 
 6. **Access the application**
@@ -260,19 +272,19 @@ curl http://localhost:8080/health
 curl http://localhost:3000
 
 # Database
-docker-compose exec postgres pg_isready
+podman-compose exec postgres pg_isready
 ```
 
 ### Logs
 
 ```bash
 # View all logs
-docker-compose logs -f
+podman-compose logs -f
 
 # View specific service
-docker-compose logs -f frontend
-docker-compose logs -f backend
-docker-compose logs -f bot
+podman-compose logs -f frontend
+podman-compose logs -f backend
+podman-compose logs -f bot
 ```
 
 ## 🤝 Contributing

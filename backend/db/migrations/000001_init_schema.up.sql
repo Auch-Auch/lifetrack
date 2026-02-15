@@ -1,3 +1,6 @@
+-- Consolidated migration - includes all schema changes
+-- Original migrations: init_schema, add_reminders, fix_activity_status, learning_plan_dag, add_files
+
 -- Create UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -46,7 +49,7 @@ CREATE TABLE activities (
   duration INT NOT NULL, -- minutes
   date DATE NOT NULL,
   notes TEXT,
-  status VARCHAR(20) NOT NULL CHECK (status IN ('completed', 'active', 'paused')),
+  status VARCHAR(20) NOT NULL CHECK (status IN ('COMPLETED', 'ACTIVE', 'PAUSED')),
   started_at TIMESTAMPTZ,
   paused_at TIMESTAMPTZ,
   paused_duration BIGINT, -- milliseconds
@@ -78,6 +81,38 @@ CREATE TABLE learning_plans (
 CREATE INDEX idx_learning_plans_user_id ON learning_plans(user_id);
 CREATE INDEX idx_learning_plans_start_date ON learning_plans(start_date);
 CREATE INDEX idx_learning_plans_end_date ON learning_plans(end_date);
+
+-- Learning plan nodes table for DAG structure
+CREATE TABLE learning_plan_nodes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  learning_plan_id UUID NOT NULL REFERENCES learning_plans(id) ON DELETE CASCADE,
+  skill_id UUID REFERENCES skills(id) ON DELETE SET NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  planned_hours DECIMAL(10,2) NOT NULL DEFAULT 0,
+  completed_hours DECIMAL(10,2) NOT NULL DEFAULT 0,
+  position_x DECIMAL(10,2) DEFAULT 0,
+  position_y DECIMAL(10,2) DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_learning_plan_nodes_plan_id ON learning_plan_nodes(learning_plan_id);
+CREATE INDEX idx_learning_plan_nodes_skill_id ON learning_plan_nodes(skill_id);
+
+-- Learning plan edges table for DAG dependencies
+CREATE TABLE learning_plan_edges (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  learning_plan_id UUID NOT NULL REFERENCES learning_plans(id) ON DELETE CASCADE,
+  source_node_id UUID NOT NULL REFERENCES learning_plan_nodes(id) ON DELETE CASCADE,
+  target_node_id UUID NOT NULL REFERENCES learning_plan_nodes(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(source_node_id, target_node_id)
+);
+
+CREATE INDEX idx_learning_plan_edges_plan_id ON learning_plan_edges(learning_plan_id);
+CREATE INDEX idx_learning_plan_edges_source ON learning_plan_edges(source_node_id);
+CREATE INDEX idx_learning_plan_edges_target ON learning_plan_edges(target_node_id);
 
 -- Events table
 CREATE TABLE events (
@@ -111,6 +146,33 @@ CREATE INDEX idx_events_type ON events(type);
 CREATE INDEX idx_events_skill_id ON events(skill_id);
 CREATE INDEX idx_events_tags ON events USING GIN(tags);
 
+-- Reminders table
+CREATE TABLE reminders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  due_time TIMESTAMPTZ NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  completed_at TIMESTAMPTZ,
+  priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+  repeat_pattern VARCHAR(50) DEFAULT 'none' CHECK (repeat_pattern IN ('none', 'daily', 'weekly', 'monthly', 'yearly', 'custom')),
+  repeat_rule TEXT, -- For custom repeat patterns (iCal format)
+  repeat_end TIMESTAMPTZ, -- When to stop repeating
+  event_id UUID REFERENCES events(id) ON DELETE SET NULL, -- Optional link to event
+  notification_channels TEXT[] DEFAULT '{"browser"}', -- browser, telegram, email
+  reminder_times INT[] DEFAULT '{0}', -- Minutes before due_time to send notifications (0 = at due time)
+  tags TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_reminders_user_id ON reminders(user_id);
+CREATE INDEX idx_reminders_due_time ON reminders(due_time);
+CREATE INDEX idx_reminders_completed ON reminders(completed);
+CREATE INDEX idx_reminders_event_id ON reminders(event_id);
+CREATE INDEX idx_reminders_tags ON reminders USING GIN(tags);
+
 -- Notes table with full-text search
 CREATE TABLE notes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -134,21 +196,67 @@ CREATE INDEX idx_notes_tags ON notes USING GIN(tags);
 CREATE INDEX idx_notes_linked ON notes(linked_type, linked_id);
 CREATE INDEX idx_notes_created_at ON notes(created_at);
 
--- Notifications queue table
+-- Notifications queue table (supports both events and reminders)
 CREATE TABLE notifications_queue (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  event_id UUID REFERENCES events(id) ON DELETE CASCADE,
+  reminder_id UUID REFERENCES reminders(id) ON DELETE CASCADE,
+  notification_type VARCHAR(20) DEFAULT 'event' CHECK (notification_type IN ('event', 'reminder')),
   scheduled_time TIMESTAMPTZ NOT NULL,
   sent BOOLEAN DEFAULT FALSE,
   sent_at TIMESTAMPTZ,
   channel VARCHAR(20) NOT NULL CHECK (channel IN ('browser', 'telegram')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  message TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT check_notification_source 
+    CHECK (
+      (event_id IS NOT NULL AND reminder_id IS NULL) OR
+      (event_id IS NULL AND reminder_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_notifications_scheduled ON notifications_queue(scheduled_time) WHERE NOT sent;
 CREATE INDEX idx_notifications_user_id ON notifications_queue(user_id);
 CREATE INDEX idx_notifications_event_id ON notifications_queue(event_id);
+CREATE INDEX idx_notifications_reminder_id ON notifications_queue(reminder_id);
+
+-- Files table for hybrid file system
+CREATE TABLE IF NOT EXISTS files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- File metadata
+    filename VARCHAR(255) NOT NULL,
+    directory VARCHAR(512) NOT NULL DEFAULT '/',
+    original_filename VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size BIGINT NOT NULL,
+    
+    -- Telegram metadata
+    telegram_file_id VARCHAR(255),
+    telegram_file_unique_id VARCHAR(255),
+    telegram_message_id BIGINT,
+    
+    -- Storage
+    storage_path VARCHAR(1024) NOT NULL, -- Path on local file system
+    
+    -- Organization
+    tags TEXT[],
+    description TEXT,
+    
+    -- Timestamps
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    -- Indexes
+    CONSTRAINT unique_storage_path UNIQUE(storage_path)
+);
+
+CREATE INDEX idx_files_user_id ON files(user_id);
+CREATE INDEX idx_files_directory ON files(user_id, directory);
+CREATE INDEX idx_files_telegram_file_id ON files(telegram_file_id);
+CREATE INDEX idx_files_created_at ON files(created_at);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -169,8 +277,36 @@ CREATE TRIGGER update_skills_updated_at BEFORE UPDATE ON skills
 CREATE TRIGGER update_learning_plans_updated_at BEFORE UPDATE ON learning_plans
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_learning_plan_nodes_updated_at BEFORE UPDATE ON learning_plan_nodes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_events_updated_at BEFORE UPDATE ON events
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_reminders_updated_at BEFORE UPDATE ON reminders
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_notes_updated_at BEFORE UPDATE ON notes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_files_updated_at
+    BEFORE UPDATE ON files
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- View for upcoming reminders (not completed, due in the future)
+CREATE OR REPLACE VIEW upcoming_reminders AS
+SELECT 
+  r.*,
+  e.title as event_title
+FROM reminders r
+LEFT JOIN events e ON r.event_id = e.id
+WHERE r.completed = FALSE 
+  AND r.due_time > NOW()
+ORDER BY r.due_time ASC;
+
+-- Comments
+COMMENT ON TABLE files IS 'Stores metadata for user files in hybrid cloud/on-premises storage';
+COMMENT ON COLUMN files.storage_path IS 'Relative path to file in on-premises storage';
+COMMENT ON COLUMN files.telegram_file_id IS 'Telegram file_id for re-uploading (deleted if file removed from Telegram)';
+COMMENT ON COLUMN files.directory IS 'Virtual directory path for file organization';

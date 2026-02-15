@@ -115,7 +115,7 @@ export default function ActivityTimer({ skillId }: Props) {
           />
           <Button
             onClick={handleStart}
-            className="w-full"
+            size="sm"
             disabled={!activityName.trim()}
           >
             <Play size={16} />

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import SkillList from '../../components/SkillList'
 import { getSkills, createSkill, CreateSkillInput } from '../../lib/skills'
+import { getActivityStats } from '../../lib/activities'
 import type { Skill } from '../../lib/skills'
 import PageHeader from '@/components/ui/PageHeader'
 import Button from '@/components/ui/Button'
@@ -13,6 +14,7 @@ import { useActivityStore } from '@/stores/activityStore'
 
 export default function SkillMapPage() {
   const [skills, setSkills] = useState<Skill[]>([])
+  const [skillHours, setSkillHours] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({ name: '', level: '', notes: '' })
@@ -24,6 +26,22 @@ export default function SkillMapPage() {
     try {
       const data = await getSkills()
       setSkills(data)
+      
+      // Load activity stats to get hours per skill
+      const end = new Date()
+      const start = new Date()
+      start.setFullYear(start.getFullYear() - 10) // Get all-time stats
+      
+      const stats = await getActivityStats(
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      )
+      
+      const hoursMap = new Map<string, number>()
+      stats.skillBreakdown.forEach(skill => {
+        hoursMap.set(skill.skillId, skill.totalHours)
+      })
+      setSkillHours(hoursMap)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load skills')
     } finally {
@@ -132,7 +150,7 @@ export default function SkillMapPage() {
         </Card>
       )}
 
-      <SkillList items={skills} pageSize={6} />
+      <SkillList items={skills} skillHours={skillHours} pageSize={6} />
     </main>
   )
 }

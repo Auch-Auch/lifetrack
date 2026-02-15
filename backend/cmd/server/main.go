@@ -81,6 +81,66 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	// File download endpoint
+	http.Handle("/files/download/", auth.Middleware(authService)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract file ID from URL path
+		fileID := r.URL.Path[len("/files/download/"):]
+		if fileID == "" {
+			http.Error(w, "File ID required", http.StatusBadRequest)
+			return
+		}
+
+		// Get user from context (set by auth middleware)
+		user, err := auth.GetUserFromContext(r.Context())
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Query file from database
+		var filename, storagePath, mimeType string
+		err = database.QueryRowContext(r.Context(),
+			"SELECT filename, storage_path, mime_type FROM files WHERE id = $1 AND user_id = $2",
+			fileID, user.ID,
+		).Scan(&filename, &storagePath, &mimeType)
+		if err != nil {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+
+		// Get storage root from environment or use default
+		storageRoot := os.Getenv("FILE_STORAGE_PATH")
+		if storageRoot == "" {
+			storageRoot = "../data/files"
+		}
+
+		// Construct full file path
+		filePath := storageRoot + "/" + storagePath
+
+		// Open file
+		file, err := os.Open(filePath)
+		if err != nil {
+			log.Printf("Error opening file %s: %v", filePath, err)
+			http.Error(w, "File not found on disk", http.StatusNotFound)
+			return
+		}
+		defer file.Close()
+
+		// Get file info for size
+		fileInfo, err := file.Stat()
+		if err != nil {
+			http.Error(w, "Error reading file", http.StatusInternalServerError)
+			return
+		}
+
+		// Set headers for download
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+		w.Header().Set("Content-Type", mimeType)
+
+		// Stream file to response (automatically sets Content-Length)
+		http.ServeContent(w, r, filename, fileInfo.ModTime(), file)
+	})))
+
 	log.Printf("🚀 Server ready at http://localhost:%s/", port)
 	log.Printf("🎮 GraphQL Playground at http://localhost:%s/", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))

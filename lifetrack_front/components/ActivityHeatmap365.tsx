@@ -11,7 +11,11 @@ type DayData = {
   totalMinutes: number
 }
 
-export default function ActivityHeatmap365() {
+type ActivityHeatmap365Props = {
+  onDaySelect?: (date: string, activities: Activity[]) => void
+}
+
+export default function ActivityHeatmap365({ onDaySelect }: ActivityHeatmap365Props = {}) {
   const [year, setYear] = useState(new Date().getFullYear())
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
@@ -136,8 +140,13 @@ export default function ActivityHeatmap365() {
   const handleDayClick = useCallback((day: DayData) => {
     if (day.date) {
       setSelectedDay(day)
+      // Call the callback with activities for this day
+      if (onDaySelect) {
+        const dayActivities = activities.filter(a => a.date === day.date)
+        onDaySelect(day.date, dayActivities)
+      }
     }
-  }, [])
+  }, [activities, onDaySelect])
 
   const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 

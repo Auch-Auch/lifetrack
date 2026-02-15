@@ -28,6 +28,11 @@
         reverse_proxy backend:8080
     }
 
+    # File downloads
+    handle /files/download/* {
+        reverse_proxy backend:8080
+    }
+
     # Health check endpoint
     handle /health* {
         reverse_proxy backend:8080

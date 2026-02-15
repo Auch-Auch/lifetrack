@@ -144,12 +144,29 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 • View last 5 notes
 • Quick preview
 
+**� File System:**
+
+/files - Browse your files
+• Navigate directories
+• View file listings
+• Download files
+
+/cd - Set current directory
+• Example: /cd /documents/work
+• All uploaded files go to current directory
+
+**Upload files:**
+• Send any document or photo
+• Add caption: `/path/to/dir → description`
+• Or use current directory from /cd
+
 **📋 Aliases:**
 /skills - Same as /session
 
 **ℹ️ Other:**
 /start - Welcome
 /help - This help
+/logout - Disconnect account
 
 💡 **Tip:** Use /session for everything related to learning sessions and skills!
 """

@@ -7,16 +7,17 @@ import Avatar from './ui/Avatar'
 import Badge from './ui/Badge'
 import Pagination from './ui/Pagination'
 import EmptyState from './ui/EmptyState'
-import { BookOpen, Activity } from 'lucide-react'
+import { BookOpen, Activity, Clock } from 'lucide-react'
 import { useActivityStore } from '@/stores/activityStore'
 
 type Props = {
   items: Skill[]
+  skillHours?: Map<string, number>
   pageSize?: number
   linkToSkill?: boolean
 }
 
-export default function SkillList({ items, pageSize = 6, linkToSkill = true }: Props) {
+export default function SkillList({ items, skillHours, pageSize = 6, linkToSkill = true }: Props) {
   const [page, setPage] = useState(1)
   const activeSession = useActivityStore((state) => state.activeSession)
 
@@ -42,6 +43,7 @@ export default function SkillList({ items, pageSize = 6, linkToSkill = true }: P
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {pageItems.map(skill => {
           const isActiveSession = activeSession?.skillId === skill.id
+          const totalHours = skillHours?.get(skill.id) || 0
           const cardContent = (
             <Card hoverable className="p-4 h-full relative">
               {isActiveSession && (
@@ -63,9 +65,20 @@ export default function SkillList({ items, pageSize = 6, linkToSkill = true }: P
                   )}
                 </div>
               </div>
-                <p className="text-sm text-[hsl(var(--muted-foreground))] line-clamp-2">
-                  {skill.notes || skill.name}
-                </p>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] line-clamp-2 mb-3">
+                {skill.notes || skill.name}
+              </p>
+              {
+                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] mt-auto">
+                  <Clock size={12} />
+                  <span>
+                    {totalHours < 1
+                      ? `${Math.round(totalHours * 60)}m`
+                      : `${totalHours.toFixed(1)}h`}
+                    {' total'}
+                  </span>
+                </div>
+              }
             </Card>
           )
 

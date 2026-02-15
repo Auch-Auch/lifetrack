@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-from handlers import commands, ui_commands, callbacks, message_handlers
+from handlers import commands, ui_commands, callbacks, message_handlers, file_handlers
 from handlers.notifications import start_notification_loop
 from backend_client.simple_client import GraphQLClient
 from config import Config
@@ -89,8 +89,22 @@ def main() -> None:
     application.add_handler(CommandHandler("notes", ui_commands.notes_command))
     application.add_handler(CommandHandler("stats", ui_commands.stats_command))
     
+    # File system commands
+    application.add_handler(CommandHandler("files", file_handlers.files_command))
+    application.add_handler(CommandHandler("cd", file_handlers.set_directory_command))
+    
     # Register callback query handler for inline buttons
     application.add_handler(CallbackQueryHandler(callbacks.handle_callback))
+    
+    # Register file upload handlers (documents and photos)
+    application.add_handler(MessageHandler(
+        filters.Document.ALL,
+        file_handlers.upload_file_handler
+    ))
+    application.add_handler(MessageHandler(
+        filters.PHOTO,
+        file_handlers.upload_file_handler
+    ))
     
     # Register message handler for note/event creation
     application.add_handler(MessageHandler(

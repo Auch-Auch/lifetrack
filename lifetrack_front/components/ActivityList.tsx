@@ -15,11 +15,13 @@ import { Edit2, Trash2, Calendar, Clock, FileText } from 'lucide-react'
 
 type Props = {
   skillId?: string
+  dateRange?: { start: string; end: string }
+  sortBy?: 'date-desc' | 'date-asc' | 'duration-desc' | 'duration-asc' | 'name-asc' | 'name-desc'
   pageSize?: number
   onEdit?: (activity: Activity) => void
 }
 
-export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) {
+export default function ActivityList({ skillId, dateRange, sortBy = 'date-desc', pageSize = 10, onEdit }: Props) {
   const activities = useActivityStore((state) => state.activities)
   const deleteActivity = useActivityStore((state) => state.deleteActivity)
   const toast = useToast()
@@ -29,11 +31,41 @@ export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) 
   
   // Filter and sort activities
   const filteredActivities = React.useMemo(() => {
-    return activities
+    let filtered = activities
       .filter(a => a.status === 'COMPLETED')
       .filter(a => !skillId || a.skillId === skillId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [activities, skillId])
+    
+    // Apply date range filter
+    if (dateRange && dateRange.start && dateRange.end) {
+      filtered = filtered.filter(a => {
+        return a.date >= dateRange.start && a.date <= dateRange.end
+      })
+    } else if (dateRange && dateRange.start) {
+      filtered = filtered.filter(a => a.date >= dateRange.start)
+    } else if (dateRange && dateRange.end) {
+      filtered = filtered.filter(a => a.date <= dateRange.end)
+    }
+    
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-desc':
+          return new Date(b.date).getTime() - new Date(a.date).getTime()
+        case 'date-asc':
+          return new Date(a.date).getTime() - new Date(b.date).getTime()
+        case 'duration-desc':
+          return b.duration - a.duration
+        case 'duration-asc':
+          return a.duration - b.duration
+        case 'name-asc':
+          return a.name.localeCompare(b.name)
+        case 'name-desc':
+          return b.name.localeCompare(a.name)
+        default:
+          return new Date(b.date).getTime() - new Date(a.date).getTime()
+      }
+    })
+  }, [activities, skillId, dateRange, sortBy])
   
   // Load skills for all activities
   useEffect(() => {
@@ -47,6 +79,11 @@ export default function ActivityList({ skillId, pageSize = 10, onEdit }: Props) 
         setSkills(skillMap)
       })
   }, [filteredActivities.length])
+  
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [skillId, dateRange, sortBy])
   
   const totalPages = Math.max(1, Math.ceil(filteredActivities.length / pageSize))
   

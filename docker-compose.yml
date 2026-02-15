@@ -59,6 +59,10 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PORT: 8080
       ENV: ${ENV:-production}
+      FILE_STORAGE_ROOT: /data/files
+    volumes:
+      # Mount file storage directory
+      - ./data/files:/data/files
     # Port not exposed externally - only accessible through Caddy
     expose:
       - "8080"
@@ -84,6 +88,9 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       BACKEND_URL: http://backend:8080/query
       SERVICE_JWT: ${SERVICE_JWT}
+      # File storage configuration
+      FILE_STORAGE_PATH: /app/data/files
+      FILE_TEMP_PATH: /tmp/lifetrack_files
       # Qwen 2.5 Coder 7B model configuration (optimized for structured output)
       MODEL_PATH: /app/models/qwen2.5-coder-7b-instruct-q5_k_m.gguf
       MODEL_N_CTX: 8192  # Qwen supports 32K, using 8K for speed/quality balance
@@ -101,6 +108,8 @@ services:
       - ./backend/graph:/backend/graph:ro
       # Mount data directory for FAISS index persistence
       - ./bot/data:/app/data
+      # Mount file storage directory (shared with backend)
+      - ./data/files:/app/data/files
     depends_on:
       - backend
     networks:

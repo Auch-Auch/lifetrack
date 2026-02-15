@@ -34,6 +34,10 @@ class Config:
     MAX_MESSAGE_LENGTH = 4096  # Telegram limit
     DEFAULT_RESPONSE_TIMEOUT = 30  # seconds
     
+    # File Storage
+    FILE_STORAGE_PATH = os.getenv('FILE_STORAGE_PATH', '/app/data/files')
+    FILE_TEMP_PATH = os.getenv('FILE_TEMP_PATH', '/tmp/lifetrack_files')
+    
     @classmethod
     def validate(cls):
         """Validate required configuration"""

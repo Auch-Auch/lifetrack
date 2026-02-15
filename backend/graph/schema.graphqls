@@ -453,6 +453,68 @@ type SkillStats {
   totalHours: Float!
 }
 
+type File {
+  id: UUID!
+  userId: UUID!
+  filename: String!
+  directory: String!
+  originalFilename: String!
+  mimeType: String!
+  fileSize: Int!
+  telegramFileId: String
+  telegramFileUniqueId: String
+  telegramMessageId: Int
+  storagePath: String!
+  tags: [String!]!
+  description: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type FileConnection {
+  nodes: [File!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type Directory {
+  path: String!
+  parent: String
+  subdirectories: [String!]!
+  fileCount: Int!
+}
+
+input FileFilter {
+  directory: String
+  mimeType: String
+  tags: [String!]
+  searchQuery: String
+  startDate: Time
+  endDate: Time
+}
+
+input CreateFileInput {
+  filename: String!
+  directory: String!
+  originalFilename: String!
+  mimeType: String!
+  fileSize: Int!
+  telegramFileId: String
+  telegramFileUniqueId: String
+  telegramMessageId: Int
+  storagePath: String!
+  tags: [String!]
+  description: String
+}
+
+input UpdateFileInput {
+  filename: String
+  directory: String
+  tags: [String!]
+  description: String
+  telegramFileId: String
+}
+
 # ======== Queries ========
 
 type Query {
@@ -500,6 +562,12 @@ type Query {
   # Statistics - Activity and learning stats
   # REQUIRED: startDate and endDate (quoted ISO date strings)
   activityStats(startDate: Date!, endDate: Date!): ActivityStats!
+  
+  # Files - File system operations
+  files(filter: FileFilter, limit: Int, offset: Int): FileConnection!
+  file(id: UUID!): File
+  directories(parentPath: String): [Directory!]!
+  directory(path: String!): Directory
 }
 
 # ======== Mutations ========
@@ -570,6 +638,14 @@ type Mutation {
   # Notifications
   markNotificationSent(id: UUID!): Notification!
   dismissNotification(id: UUID!): Boolean!
+  
+  # Files
+  createFile(input: CreateFileInput!): File!
+  updateFile(id: UUID!, input: UpdateFileInput!): File!
+  deleteFile(id: UUID!, removeFromStorage: Boolean): Boolean!
+  createDirectory(path: String!): Directory!
+  deleteDirectory(path: String!, recursive: Boolean): Boolean!
+  moveFile(id: UUID!, newDirectory: String!): File!
 }
 
 type AuthPayload {

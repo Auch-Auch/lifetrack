@@ -1,11 +1,51 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import PageHeader from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ActivityHeatmap365 from '@/components/ActivityHeatmap365'
-import { BookOpen, Activity, Target } from 'lucide-react'
+import { BookOpen, Activity as ActivityIcon, Target, Clock, FileText } from 'lucide-react'
+import { Activity } from '@/lib/activities'
+import { Skill } from '@/lib/skills'
 
 export default function Home() {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedActivities, setSelectedActivities] = useState<Activity[]>([])
+  const [skills, setSkills] = useState<Map<string, Skill>>(new Map())
+
+  const handleDaySelect = async (date: string, activities: Activity[]) => {
+    setSelectedDate(date)
+    setSelectedActivities(activities)
+    
+    // Load skills for activities if not already loaded
+    const skillIds = activities.map(a => a.skillId).filter(id => !skills.has(id))
+    if (skillIds.length > 0) {
+      const { getSkills } = await import('@/lib/skills')
+      try {
+        const allSkills = await getSkills()
+        const skillMap = new Map(skills)
+        allSkills.forEach(skill => skillMap.set(skill.id, skill))
+        setSkills(skillMap)
+      } catch (error) {
+        console.error('Failed to load skills:', error)
+      }
+    }
+  }
+
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  }
+
   return (
     <main className="container mx-auto p-6">
       <PageHeader
@@ -15,8 +55,91 @@ export default function Home() {
 
       {/* Activity Heatmap */}
       <div className="mb-8">
-        <ActivityHeatmap365 />
+        <ActivityHeatmap365 onDaySelect={handleDaySelect} />
       </div>
+
+      {/* Selected Day Activities */}
+      {selectedDate && (
+        <div className="mb-8">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Activities on {formatDate(selectedDate)}</h3>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    {selectedActivities.length} {selectedActivities.length === 1 ? 'session' : 'sessions'}
+                    {selectedActivities.length > 0 && (
+                      <> · {formatDuration(selectedActivities.reduce((sum, a) => sum + a.duration, 0))}</>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedDate(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {selectedActivities.length === 0 ? (
+                <div className="text-center py-8 text-[hsl(var(--muted-foreground))]">
+                  <ActivityIcon className="mx-auto mb-3 opacity-50" size={32} />
+                  <p>No activities on this day</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedActivities.map((activity) => {
+                    const skill = skills.get(activity.skillId)
+                    return (
+                      <div
+                        key={activity.id}
+                        className="flex items-start gap-4 p-4 bg-[hsl(var(--muted))]/30 rounded-[var(--radius)] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))] transition-colors"
+                      >
+                        <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-green-500" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold text-sm">{activity.name}</h4>
+                            {skill && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
+                                {skill.name}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-[hsl(var(--muted-foreground))]">
+                            <span className="flex items-center gap-1">
+                              <Clock size={12} />
+                              {formatDuration(activity.duration)}
+                            </span>
+                            {activity.notes && (
+                              <span className="flex items-center gap-1">
+                                <FileText size={12} />
+                                Notes
+                              </span>
+                            )}
+                          </div>
+                          {activity.notes && (
+                            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))] line-clamp-2">
+                              {activity.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex-shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+                          {new Date(activity.createdAt).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
       
       <div className="grid gap-6 md:grid-cols-3 mb-8">
         <Card hoverable>
@@ -37,7 +160,7 @@ export default function Home() {
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="p-3 bg-[hsl(var(--success)_/_0.1)] rounded-[var(--radius)] text-[hsl(var(--success))]">
-                <Activity size={24} />
+                <ActivityIcon size={24} />
               </div>
               <div>
                 <h3 className="font-semibold text-lg">Activities</h3>

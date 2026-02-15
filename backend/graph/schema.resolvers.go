@@ -7,6 +7,7 @@ package graph
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,88 +16,82 @@ import (
 	"github.com/aleksandr/lifetrack/backend/auth"
 	"github.com/aleksandr/lifetrack/backend/graph/model"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 )
 
-// Helper function to scan a reminder from a database row with proper array handling
-func scanReminder(scanner interface{ Scan(...interface{}) error }) (*model.Reminder, error) {
-	var reminder model.Reminder
-	var notificationChannels, tags pq.StringArray
-	var reminderTimes pq.Int64Array
+// Skills is the resolver for the skills field.
+func (r *learningPlanResolver) Skills(ctx context.Context, obj *model.LearningPlan) ([]*model.Skill, error) {
+	if len(obj.SkillIds) == 0 {
+		return []*model.Skill{}, nil
+	}
 
-	err := scanner.Scan(
-		&reminder.ID,
-		&reminder.UserID,
-		&reminder.Title,
-		&reminder.Description,
-		&reminder.DueTime,
-		&reminder.Completed,
-		&reminder.CompletedAt,
-		&reminder.Priority,
-		&reminder.RepeatPattern,
-		&reminder.RepeatRule,
-		&reminder.RepeatEnd,
-		&reminder.EventID,
-		&notificationChannels,
-		&reminderTimes,
-		&tags,
-		&reminder.CreatedAt,
-		&reminder.UpdatedAt,
-	)
+	// Convert skill IDs to strings for the query
+	skillIDStrs := make([]string, len(obj.SkillIds))
+	for i, id := range obj.SkillIds {
+		skillIDStrs[i] = id.String()
+	}
+
+	var skills []*model.Skill
+	query := `
+		SELECT id, user_id, name, level, notes, created_at, updated_at
+		FROM skills
+		WHERE id = ANY($1)
+		ORDER BY name ASC
+	`
+	err := r.DB.Select(&skills, query, pq.Array(skillIDStrs))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch skills: %w", err)
 	}
 
-	// Convert pq arrays to Go slices
-	reminder.NotificationChannels = []string(notificationChannels)
-	reminder.Tags = []string(tags)
-	reminder.ReminderTimes = make([]int, len(reminderTimes))
-	for i, v := range reminderTimes {
-		reminder.ReminderTimes[i] = int(v)
-	}
-
-	return &reminder, nil
+	return skills, nil
 }
 
-// Helper function to scan a reminder from sqlx.Rows
-func scanReminderFromRows(rows *sqlx.Rows) (*model.Reminder, error) {
-	var reminder model.Reminder
-	var notificationChannels, tags pq.StringArray
-	var reminderTimes pq.Int64Array
-
-	err := rows.Scan(
-		&reminder.ID,
-		&reminder.UserID,
-		&reminder.Title,
-		&reminder.Description,
-		&reminder.DueTime,
-		&reminder.Completed,
-		&reminder.CompletedAt,
-		&reminder.Priority,
-		&reminder.RepeatPattern,
-		&reminder.RepeatRule,
-		&reminder.RepeatEnd,
-		&reminder.EventID,
-		&notificationChannels,
-		&reminderTimes,
-		&tags,
-		&reminder.CreatedAt,
-		&reminder.UpdatedAt,
-	)
+// Nodes is the resolver for the nodes field.
+func (r *learningPlanResolver) Nodes(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanNode, error) {
+	var nodes []*model.LearningPlanNode
+	err := r.DB.Select(&nodes, `
+		SELECT id, learning_plan_id, skill_id, title, description,
+		       planned_hours, completed_hours, position_x, position_y,
+		       created_at, updated_at
+		FROM learning_plan_nodes
+		WHERE learning_plan_id = $1
+		ORDER BY created_at ASC
+	`, obj.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch learning plan nodes: %w", err)
 	}
 
-	// Convert pq arrays to Go slices
-	reminder.NotificationChannels = []string(notificationChannels)
-	reminder.Tags = []string(tags)
-	reminder.ReminderTimes = make([]int, len(reminderTimes))
-	for i, v := range reminderTimes {
-		reminder.ReminderTimes[i] = int(v)
+	// Fetch skills for nodes that have skill_id set
+	for _, node := range nodes {
+		if node.SkillID != nil {
+			var skill model.Skill
+			err = r.DB.Get(&skill, `
+				SELECT id, user_id, name, level, notes, created_at, updated_at
+				FROM skills WHERE id = $1
+			`, *node.SkillID)
+			if err == nil {
+				node.Skill = &skill
+			}
+		}
 	}
 
-	return &reminder, nil
+	return nodes, nil
+}
+
+// Edges is the resolver for the edges field.
+func (r *learningPlanResolver) Edges(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanEdge, error) {
+	var edges []*model.LearningPlanEdge
+	err := r.DB.Select(&edges, `
+		SELECT id, learning_plan_id, source_node_id, target_node_id, created_at
+		FROM learning_plan_edges
+		WHERE learning_plan_id = $1
+		ORDER BY created_at ASC
+	`, obj.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch learning plan edges: %w", err)
+	}
+
+	return edges, nil
 }
 
 // Register creates a new user account
@@ -381,12 +376,163 @@ func (r *mutationResolver) CreateActivity(ctx context.Context, input model.Creat
 
 // UpdateActivity is the resolver for the updateActivity field.
 func (r *mutationResolver) UpdateActivity(ctx context.Context, id uuid.UUID, input model.UpdateActivityInput) (*model.Activity, error) {
-	panic(fmt.Errorf("not implemented: UpdateActivity - updateActivity"))
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify the activity belongs to the user
+	var ownerID uuid.UUID
+	err = r.DB.Get(&ownerID, "SELECT user_id FROM activities WHERE id = $1", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("activity not found")
+		}
+		return nil, fmt.Errorf("failed to verify activity ownership: %w", err)
+	}
+
+	if ownerID != userID {
+		return nil, fmt.Errorf("unauthorized: activity does not belong to user")
+	}
+
+	// Build dynamic update query based on provided fields
+	updateFields := []string{}
+	updateValues := []interface{}{}
+	paramIndex := 1
+
+	if input.Name != nil {
+		updateFields = append(updateFields, fmt.Sprintf("name = $%d", paramIndex))
+		updateValues = append(updateValues, *input.Name)
+		paramIndex++
+	}
+
+	if input.Duration != nil {
+		updateFields = append(updateFields, fmt.Sprintf("duration = $%d", paramIndex))
+		updateValues = append(updateValues, *input.Duration)
+		paramIndex++
+	}
+
+	if input.Date != nil {
+		updateFields = append(updateFields, fmt.Sprintf("date = $%d", paramIndex))
+		updateValues = append(updateValues, *input.Date)
+		paramIndex++
+	}
+
+	if input.Notes != nil {
+		updateFields = append(updateFields, fmt.Sprintf("notes = $%d", paramIndex))
+		updateValues = append(updateValues, *input.Notes)
+		paramIndex++
+	}
+
+	if input.Status != nil {
+		status := strings.ToLower(string(*input.Status))
+		updateFields = append(updateFields, fmt.Sprintf("status = $%d", paramIndex))
+		updateValues = append(updateValues, status)
+		paramIndex++
+	}
+
+	if len(updateFields) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	// Add the ID to the values for the WHERE clause
+	updateValues = append(updateValues, id)
+
+	// Execute update
+	query := fmt.Sprintf("UPDATE activities SET %s WHERE id = $%d",
+		strings.Join(updateFields, ", "),
+		paramIndex)
+
+	_, err = r.DB.Exec(query, updateValues...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update activity: %w", err)
+	}
+
+	// Fetch updated activity
+	var activity model.Activity
+	err = r.DB.Get(&activity, `
+		SELECT 
+			id,
+			user_id,
+			skill_id,
+			name,
+			duration,
+			date,
+			notes,
+			status,
+			started_at,
+			paused_at,
+			paused_duration,
+			created_at
+		FROM activities WHERE id = $1
+	`, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated activity: %w", err)
+	}
+
+	// Fetch associated skill
+	var skill model.Skill
+	err = r.DB.Get(&skill, `
+		SELECT 
+			id,
+			user_id,
+			name,
+			level,
+			notes,
+			created_at,
+			updated_at
+		FROM skills WHERE id = $1
+	`, activity.SkillID)
+	if err == nil {
+		activity.Skill = &skill
+	}
+
+	return &activity, nil
 }
 
 // DeleteActivity is the resolver for the deleteActivity field.
 func (r *mutationResolver) DeleteActivity(ctx context.Context, id uuid.UUID) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteActivity - deleteActivity"))
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Verify the activity belongs to the user
+	var ownerID uuid.UUID
+	err = r.DB.Get(&ownerID, "SELECT user_id FROM activities WHERE id = $1", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, fmt.Errorf("activity not found")
+		}
+		return false, fmt.Errorf("failed to verify activity ownership: %w", err)
+	}
+
+	if ownerID != userID {
+		return false, fmt.Errorf("unauthorized: activity does not belong to user")
+	}
+
+	// Delete the activity
+	result, err := r.DB.Exec("DELETE FROM activities WHERE id = $1", id)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete activity: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return false, fmt.Errorf("activity not found")
+	}
+
+	return true, nil
 }
 
 // StartSession starts a new activity session
@@ -804,18 +950,20 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input model.CreateEv
 	recurrenceStr := strings.ToLower(string(recurrence))
 
 	// Convert notifications to JSONB
-	var notificationsJSON []byte
+	var notificationsJSON interface{}
 	if input.Notifications != nil {
 		notifData := map[string]interface{}{
 			"enabled":         input.Notifications.Enabled,
 			"channels":        input.Notifications.Channels,
 			"reminderMinutes": input.Notifications.ReminderMinutes,
 		}
-		var err error
-		notificationsJSON, err = json.Marshal(notifData)
+		jsonBytes, err := json.Marshal(notifData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal notifications: %w", err)
 		}
+		notificationsJSON = jsonBytes
+	} else {
+		notificationsJSON = nil
 	}
 
 	// Insert event
@@ -1094,17 +1242,268 @@ func (r *mutationResolver) DeleteEvent(ctx context.Context, id uuid.UUID) (bool,
 
 // CreateLearningPlan is the resolver for the createLearningPlan field.
 func (r *mutationResolver) CreateLearningPlan(ctx context.Context, input model.CreateLearningPlanInput) (*model.LearningPlan, error) {
-	panic(fmt.Errorf("not implemented: CreateLearningPlan - createLearningPlan"))
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	planID := uuid.New()
+	now := time.Now()
+
+	// Marshal schedule to JSONB
+	scheduleJSON, err := json.Marshal(input.Schedule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal schedule: %w", err)
+	}
+
+	// Convert UUID slice to string slice for pq.Array
+	skillIDStrs := make([]string, len(input.SkillIds))
+	for i, id := range input.SkillIds {
+		skillIDStrs[i] = id.String()
+	}
+
+	// Insert learning plan
+	query := `
+		INSERT INTO learning_plans (
+			id, user_id, name, description, skill_ids, schedule, 
+			target_hours_per_week, start_date, end_date, completed_hours,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`
+
+	_, err = r.DB.Exec(
+		query,
+		planID, userID, input.Name, input.Description, pq.Array(skillIDStrs),
+		scheduleJSON, input.TargetHoursPerWeek, input.StartDate, input.EndDate, 0,
+		now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create learning plan: %w", err)
+	}
+
+	// Convert ScheduleInput to Schedule
+	schedule := &model.Schedule{
+		Frequency:       input.Schedule.Frequency,
+		DurationMinutes: input.Schedule.DurationMinutes,
+		PreferredTimes:  input.Schedule.PreferredTimes,
+		PreferredDays:   input.Schedule.PreferredDays,
+		AutoSchedule:    input.Schedule.AutoSchedule,
+	}
+
+	// Create the response object
+	plan := &model.LearningPlan{
+		ID:                 planID,
+		UserID:             userID,
+		Name:               input.Name,
+		Description:        input.Description,
+		SkillIds:           input.SkillIds,
+		Skills:             []*model.Skill{},
+		Schedule:           schedule,
+		TargetHoursPerWeek: input.TargetHoursPerWeek,
+		StartDate:          input.StartDate,
+		EndDate:            input.EndDate,
+		CompletedHours:     0,
+		Nodes:              []*model.LearningPlanNode{},
+		Edges:              []*model.LearningPlanEdge{},
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+
+	return plan, nil
 }
 
 // UpdateLearningPlan is the resolver for the updateLearningPlan field.
 func (r *mutationResolver) UpdateLearningPlan(ctx context.Context, id uuid.UUID, input model.UpdateLearningPlanInput) (*model.LearningPlan, error) {
-	panic(fmt.Errorf("not implemented: UpdateLearningPlan - updateLearningPlan"))
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Check authorization - verify plan belongs to user
+	var planOwner uuid.UUID
+	err = r.DB.Get(&planOwner, "SELECT user_id FROM learning_plans WHERE id = $1", id)
+	if err != nil {
+		return nil, fmt.Errorf("learning plan not found")
+	}
+	if planOwner != userID {
+		return nil, fmt.Errorf("unauthorized: plan belongs to another user")
+	}
+
+	// Build dynamic update query
+	updateFields := []string{}
+	args := []interface{}{}
+	paramIdx := 1
+
+	if input.Name != nil {
+		updateFields = append(updateFields, fmt.Sprintf("name = $%d", paramIdx))
+		args = append(args, *input.Name)
+		paramIdx++
+	}
+
+	if input.Description != nil {
+		updateFields = append(updateFields, fmt.Sprintf("description = $%d", paramIdx))
+		args = append(args, *input.Description)
+		paramIdx++
+	}
+
+	if input.SkillIds != nil {
+		skillIDStrs := make([]string, len(input.SkillIds))
+		for i, skillID := range input.SkillIds {
+			skillIDStrs[i] = skillID.String()
+		}
+		updateFields = append(updateFields, fmt.Sprintf("skill_ids = $%d", paramIdx))
+		args = append(args, pq.Array(skillIDStrs))
+		paramIdx++
+	}
+
+	if input.Schedule != nil {
+		scheduleJSON, err := json.Marshal(input.Schedule)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal schedule: %w", err)
+		}
+		updateFields = append(updateFields, fmt.Sprintf("schedule = $%d", paramIdx))
+		args = append(args, scheduleJSON)
+		paramIdx++
+	}
+
+	if input.TargetHoursPerWeek != nil {
+		updateFields = append(updateFields, fmt.Sprintf("target_hours_per_week = $%d", paramIdx))
+		args = append(args, *input.TargetHoursPerWeek)
+		paramIdx++
+	}
+
+	if input.StartDate != nil {
+		updateFields = append(updateFields, fmt.Sprintf("start_date = $%d", paramIdx))
+		args = append(args, *input.StartDate)
+		paramIdx++
+	}
+
+	if input.EndDate != nil {
+		updateFields = append(updateFields, fmt.Sprintf("end_date = $%d", paramIdx))
+		args = append(args, *input.EndDate)
+		paramIdx++
+	}
+
+	if len(updateFields) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	// Add updated_at
+	updateFields = append(updateFields, fmt.Sprintf("updated_at = $%d", paramIdx))
+	args = append(args, time.Now())
+	paramIdx++
+
+	// Add ID for WHERE clause
+	args = append(args, id)
+
+	query := fmt.Sprintf(
+		"UPDATE learning_plans SET %s WHERE id = $%d",
+		strings.Join(updateFields, ", "),
+		paramIdx,
+	)
+
+	_, err = r.DB.Exec(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update learning plan: %w", err)
+	}
+
+	// Fetch and return updated plan
+	type dbLearningPlan struct {
+		ID                 uuid.UUID      `db:"id"`
+		UserID             uuid.UUID      `db:"user_id"`
+		Name               string         `db:"name"`
+		Description        *string        `db:"description"`
+		SkillIDs           pq.StringArray `db:"skill_ids"`
+		ScheduleJSON       []byte         `db:"schedule"`
+		TargetHoursPerWeek *float64       `db:"target_hours_per_week"`
+		StartDate          time.Time      `db:"start_date"`
+		EndDate            *time.Time     `db:"end_date"`
+		CompletedHours     float64        `db:"completed_hours"`
+		CreatedAt          time.Time      `db:"created_at"`
+		UpdatedAt          time.Time      `db:"updated_at"`
+	}
+
+	var dbPlan dbLearningPlan
+	err = r.DB.Get(&dbPlan, `
+		SELECT id, user_id, name, description, skill_ids, schedule,
+		       target_hours_per_week, start_date, end_date, completed_hours,
+		       created_at, updated_at
+		FROM learning_plans
+		WHERE id = $1
+	`, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated learning plan: %w", err)
+	}
+
+	// Convert skill IDs from string array to UUID array
+	skillIDs := make([]uuid.UUID, len(dbPlan.SkillIDs))
+	for i, idStr := range dbPlan.SkillIDs {
+		skillIDs[i], _ = uuid.Parse(idStr)
+	}
+
+	// Unmarshal schedule
+	var schedule model.Schedule
+	err = json.Unmarshal(dbPlan.ScheduleJSON, &schedule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal schedule: %w", err)
+	}
+
+	plan := &model.LearningPlan{
+		ID:                 dbPlan.ID,
+		UserID:             dbPlan.UserID,
+		Name:               dbPlan.Name,
+		Description:        dbPlan.Description,
+		SkillIds:           skillIDs,
+		Skills:             []*model.Skill{},
+		Schedule:           &schedule,
+		TargetHoursPerWeek: dbPlan.TargetHoursPerWeek,
+		StartDate:          dbPlan.StartDate,
+		EndDate:            dbPlan.EndDate,
+		CompletedHours:     dbPlan.CompletedHours,
+		Nodes:              []*model.LearningPlanNode{},
+		Edges:              []*model.LearningPlanEdge{},
+		CreatedAt:          dbPlan.CreatedAt,
+		UpdatedAt:          dbPlan.UpdatedAt,
+	}
+
+	return plan, nil
 }
 
 // DeleteLearningPlan is the resolver for the deleteLearningPlan field.
 func (r *mutationResolver) DeleteLearningPlan(ctx context.Context, id uuid.UUID) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteLearningPlan - deleteLearningPlan"))
+	user, err := auth.RequireAuth(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Delete with authorization check
+	query := `DELETE FROM learning_plans WHERE id = $1 AND user_id = $2`
+	result, err := r.DB.Exec(query, id, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete learning plan: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return false, fmt.Errorf("learning plan not found or unauthorized")
+	}
+
+	return true, nil
 }
 
 // GenerateSchedule is the resolver for the generateSchedule field.
@@ -1153,7 +1552,7 @@ func (r *mutationResolver) CreateLearningPlanNode(ctx context.Context, input mod
 	}
 
 	node := &model.LearningPlanNode{
-		ID:              nodeID,
+		ID:             nodeID,
 		LearningPlanID: input.LearningPlanID,
 		SkillID:        input.SkillID,
 		Title:          input.Title,
@@ -1390,7 +1789,7 @@ func (r *mutationResolver) CreateLearningPlanEdge(ctx context.Context, input mod
 	}
 
 	return &model.LearningPlanEdge{
-		ID:              edgeID,
+		ID:             edgeID,
 		LearningPlanID: input.LearningPlanID,
 		SourceNodeID:   input.SourceNodeID,
 		TargetNodeID:   input.TargetNodeID,
@@ -2000,6 +2399,7 @@ func (r *mutationResolver) DismissNotification(ctx context.Context, id uuid.UUID
 	return true, nil
 }
 
+// CreateFile creates a new file record
 // Me returns the authenticated user
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	user, err := auth.RequireAuth(ctx)
@@ -2469,9 +2869,77 @@ func (r *queryResolver) LearningPlans(ctx context.Context) ([]*model.LearningPla
 		return nil, err
 	}
 
-	// TODO: Implement database query
-	_ = user
-	return []*model.LearningPlan{}, nil
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	var plans []*model.LearningPlan
+
+	type dbLearningPlan struct {
+		ID                 uuid.UUID      `db:"id"`
+		UserID             uuid.UUID      `db:"user_id"`
+		Name               string         `db:"name"`
+		Description        *string        `db:"description"`
+		SkillIDs           pq.StringArray `db:"skill_ids"`
+		ScheduleJSON       []byte         `db:"schedule"`
+		TargetHoursPerWeek *float64       `db:"target_hours_per_week"`
+		StartDate          time.Time      `db:"start_date"`
+		EndDate            *time.Time     `db:"end_date"`
+		CompletedHours     float64        `db:"completed_hours"`
+		CreatedAt          time.Time      `db:"created_at"`
+		UpdatedAt          time.Time      `db:"updated_at"`
+	}
+
+	var dbPlans []dbLearningPlan
+	err = r.DB.Select(&dbPlans, `
+		SELECT id, user_id, name, description, skill_ids, schedule,
+		       target_hours_per_week, start_date, end_date, completed_hours,
+		       created_at, updated_at
+		FROM learning_plans
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch learning plans: %w", err)
+	}
+
+	// Convert database plans to model plans
+	for _, dbPlan := range dbPlans {
+		// Convert skill IDs from string array to UUID array
+		skillIDs := make([]uuid.UUID, len(dbPlan.SkillIDs))
+		for i, idStr := range dbPlan.SkillIDs {
+			skillIDs[i], _ = uuid.Parse(idStr)
+		}
+
+		// Unmarshal schedule
+		var schedule model.Schedule
+		err = json.Unmarshal(dbPlan.ScheduleJSON, &schedule)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal schedule: %w", err)
+		}
+
+		plan := &model.LearningPlan{
+			ID:                 dbPlan.ID,
+			UserID:             dbPlan.UserID,
+			Name:               dbPlan.Name,
+			Description:        dbPlan.Description,
+			SkillIds:           skillIDs,
+			Skills:             []*model.Skill{}, // Resolved by field resolver
+			Schedule:           &schedule,
+			TargetHoursPerWeek: dbPlan.TargetHoursPerWeek,
+			StartDate:          dbPlan.StartDate,
+			EndDate:            dbPlan.EndDate,
+			CompletedHours:     dbPlan.CompletedHours,
+			Nodes:              []*model.LearningPlanNode{}, // Resolved by field resolver
+			Edges:              []*model.LearningPlanEdge{}, // Resolved by field resolver
+			CreatedAt:          dbPlan.CreatedAt,
+			UpdatedAt:          dbPlan.UpdatedAt,
+		}
+		plans = append(plans, plan)
+	}
+
+	return plans, nil
 }
 
 // LearningPlan returns a single learning plan by ID
@@ -2481,10 +2949,70 @@ func (r *queryResolver) LearningPlan(ctx context.Context, id uuid.UUID) (*model.
 		return nil, err
 	}
 
-	// TODO: Implement database query with authorization check
-	_ = user
-	_ = id
-	return nil, fmt.Errorf("not implemented")
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	type dbLearningPlan struct {
+		ID                 uuid.UUID      `db:"id"`
+		UserID             uuid.UUID      `db:"user_id"`
+		Name               string         `db:"name"`
+		Description        *string        `db:"description"`
+		SkillIDs           pq.StringArray `db:"skill_ids"`
+		ScheduleJSON       []byte         `db:"schedule"`
+		TargetHoursPerWeek *float64       `db:"target_hours_per_week"`
+		StartDate          time.Time      `db:"start_date"`
+		EndDate            *time.Time     `db:"end_date"`
+		CompletedHours     float64        `db:"completed_hours"`
+		CreatedAt          time.Time      `db:"created_at"`
+		UpdatedAt          time.Time      `db:"updated_at"`
+	}
+
+	var dbPlan dbLearningPlan
+	err = r.DB.Get(&dbPlan, `
+		SELECT id, user_id, name, description, skill_ids, schedule,
+		       target_hours_per_week, start_date, end_date, completed_hours,
+		       created_at, updated_at
+		FROM learning_plans
+		WHERE id = $1 AND user_id = $2
+	`, id, userID)
+	if err != nil {
+		return nil, fmt.Errorf("learning plan not found: %w", err)
+	}
+
+	// Convert skill IDs from string array to UUID array
+	skillIDs := make([]uuid.UUID, len(dbPlan.SkillIDs))
+	for i, idStr := range dbPlan.SkillIDs {
+		skillIDs[i], _ = uuid.Parse(idStr)
+	}
+
+	// Unmarshal schedule
+	var schedule model.Schedule
+	err = json.Unmarshal(dbPlan.ScheduleJSON, &schedule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal schedule: %w", err)
+	}
+
+	plan := &model.LearningPlan{
+		ID:                 dbPlan.ID,
+		UserID:             dbPlan.UserID,
+		Name:               dbPlan.Name,
+		Description:        dbPlan.Description,
+		SkillIds:           skillIDs,
+		Skills:             []*model.Skill{}, // Resolved by field resolver
+		Schedule:           &schedule,
+		TargetHoursPerWeek: dbPlan.TargetHoursPerWeek,
+		StartDate:          dbPlan.StartDate,
+		EndDate:            dbPlan.EndDate,
+		CompletedHours:     dbPlan.CompletedHours,
+		Nodes:              []*model.LearningPlanNode{}, // Resolved by field resolver
+		Edges:              []*model.LearningPlanEdge{}, // Resolved by field resolver
+		CreatedAt:          dbPlan.CreatedAt,
+		UpdatedAt:          dbPlan.UpdatedAt,
+	}
+
+	return plan, nil
 }
 
 // Notes returns paginated notes with optional filters
@@ -2829,7 +3357,7 @@ func (r *queryResolver) Reminders(ctx context.Context, filter *model.ReminderFil
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		reminder, err := scanReminderFromRows(rows)
+		reminder, err := scanReminder(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
@@ -2912,7 +3440,7 @@ func (r *queryResolver) UpcomingReminders(ctx context.Context, limit *int) ([]*m
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		reminder, err := scanReminderFromRows(rows)
+		reminder, err := scanReminder(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
@@ -2949,7 +3477,7 @@ func (r *queryResolver) OverdueReminders(ctx context.Context) ([]*model.Reminder
 
 	reminders := []*model.Reminder{}
 	for rows.Next() {
-		reminder, err := scanReminderFromRows(rows)
+		reminder, err := scanReminder(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan reminder: %w", err)
 		}
@@ -3158,6 +3686,8 @@ func (r *queryResolver) ActivityStats(ctx context.Context, startDate time.Time, 
 	}, nil
 }
 
+// Files returns a paginated list of files for the current user
+
 // EventReminder is the resolver for the eventReminder field.
 func (r *subscriptionResolver) EventReminder(ctx context.Context, userID uuid.UUID) (<-chan *model.EventNotification, error) {
 	panic(fmt.Errorf("not implemented: EventReminder - eventReminder"))
@@ -3168,6 +3698,9 @@ func (r *subscriptionResolver) ReminderNotification(ctx context.Context, userID 
 	panic(fmt.Errorf("not implemented: ReminderNotification - reminderNotification"))
 }
 
+// LearningPlan returns LearningPlanResolver implementation.
+func (r *Resolver) LearningPlan() LearningPlanResolver { return &learningPlanResolver{r} }
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
@@ -3177,64 +3710,543 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
-// LearningPlan returns LearningPlanResolver implementation.
-func (r *Resolver) LearningPlan() LearningPlanResolver { return &learningPlanResolver{r} }
-
+type learningPlanResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
-type learningPlanResolver struct{ *Resolver }
 
-// LearningPlanResolver defines the resolver interface for LearningPlan fields
-type LearningPlanResolver interface {
-	Nodes(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanNode, error)
-	Edges(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanEdge, error)
-}
-
-// Nodes resolves the nodes field for a learning plan
-func (r *learningPlanResolver) Nodes(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanNode, error) {
-	var nodes []*model.LearningPlanNode
-	err := r.DB.Select(&nodes, `
-		SELECT id, learning_plan_id, skill_id, title, description,
-		       planned_hours, completed_hours, position_x, position_y,
-		       created_at, updated_at
-		FROM learning_plan_nodes
-		WHERE learning_plan_id = $1
-		ORDER BY created_at ASC
-	`, obj.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch learning plan nodes: %w", err)
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+/*
+	func (r *mutationResolver) CreateFile(ctx context.Context, input model.CreateFileInput) (*model.File, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
 	}
 
-	// Fetch skills for nodes that have skill_id set
-	for _, node := range nodes {
-		if node.SkillID != nil {
-			var skill model.Skill
-			err = r.DB.Get(&skill, `
-				SELECT id, user_id, name, level, notes, created_at, updated_at
-				FROM skills WHERE id = $1
-			`, *node.SkillID)
-			if err == nil {
-				node.Skill = &skill
-			}
+	query := `INSERT INTO files
+	          (user_id, filename, directory, original_filename, mime_type, file_size,
+	           telegram_file_id, telegram_file_unique_id, telegram_message_id, storage_path, tags, description)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	          RETURNING id, user_id, filename, directory, original_filename, mime_type,
+	          file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id,
+	          storage_path, tags, description, created_at, updated_at`
+
+	tags := []string{}
+	if input.Tags != nil {
+		tags = input.Tags
+	}
+
+	file, err := scanFile(r.DB.QueryRowContext(ctx, query,
+		currentUser.ID,
+		input.Filename,
+		input.Directory,
+		input.OriginalFilename,
+		input.MimeType,
+		input.FileSize,
+		input.TelegramFileID,
+		input.TelegramFileUniqueID,
+		input.TelegramMessageID,
+		input.StoragePath,
+		pq.Array(tags),
+		input.Description,
+	))
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file: %w", err)
+	}
+
+	return file, nil
+}
+func (r *mutationResolver) UpdateFile(ctx context.Context, id uuid.UUID, input model.UpdateFileInput) (*model.File, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Build dynamic update query
+	updates := []string{}
+	args := []interface{}{id, currentUser.ID}
+	argCount := 2
+
+	if input.Filename != nil {
+		argCount++
+		updates = append(updates, fmt.Sprintf("filename = $%d", argCount))
+		args = append(args, *input.Filename)
+	}
+	if input.Directory != nil {
+		argCount++
+		updates = append(updates, fmt.Sprintf("directory = $%d", argCount))
+		args = append(args, *input.Directory)
+	}
+	if input.Tags != nil {
+		argCount++
+		updates = append(updates, fmt.Sprintf("tags = $%d", argCount))
+		args = append(args, pq.Array(input.Tags))
+	}
+	if input.Description != nil {
+		argCount++
+		updates = append(updates, fmt.Sprintf("description = $%d", argCount))
+		args = append(args, *input.Description)
+	}
+	if input.TelegramFileID != nil {
+		argCount++
+		updates = append(updates, fmt.Sprintf("telegram_file_id = $%d", argCount))
+		args = append(args, *input.TelegramFileID)
+	}
+
+	if len(updates) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	updates = append(updates, "updated_at = NOW()")
+
+	query := fmt.Sprintf(`UPDATE files SET %s WHERE id = $1 AND user_id = $2
+	                      RETURNING id, user_id, filename, directory, original_filename, mime_type,
+	                      file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id,
+	                      storage_path, tags, description, created_at, updated_at`,
+		strings.Join(updates, ", "))
+
+	file, err := scanFile(r.DB.QueryRowContext(ctx, query, args...))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("file not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to update file: %w", err)
+	}
+
+	return file, nil
+}
+func (r *mutationResolver) DeleteFile(ctx context.Context, id uuid.UUID, removeFromStorage *bool) (bool, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return false, fmt.Errorf("unauthorized")
+	}
+
+	// Get file info first if we need to delete from storage
+	if removeFromStorage != nil && *removeFromStorage {
+		var storagePath string
+		err := r.DB.QueryRowContext(ctx,
+			"SELECT storage_path FROM files WHERE id = $1 AND user_id = $2",
+			id, currentUser.ID).Scan(&storagePath)
+		if err != nil {
+			return false, fmt.Errorf("file not found")
+		}
+
+		// Delete from storage (you'll need to implement this with your Storage instance)
+		// For now, we'll just delete the DB record
+	}
+
+	query := `DELETE FROM files WHERE id = $1 AND user_id = $2`
+	result, err := r.DB.ExecContext(ctx, query, id, currentUser.ID)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to check deletion: %w", err)
+	}
+
+	return rows > 0, nil
+}
+func (r *mutationResolver) CreateDirectory(ctx context.Context, path string) (*model.Directory, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Directories are created implicitly when files are added
+	// Just return the directory structure
+	return r.Directory(ctx, path)
+}
+func (r *mutationResolver) DeleteDirectory(ctx context.Context, path string, recursive *bool) (bool, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return false, fmt.Errorf("unauthorized")
+	}
+
+	isRecursive := false
+	if recursive != nil {
+		isRecursive = *recursive
+	}
+
+	if isRecursive {
+		// Delete all files in directory and subdirectories
+		pattern := path
+		if !strings.HasSuffix(pattern, "/") {
+			pattern += "/"
+		}
+		pattern += "%"
+
+		query := `DELETE FROM files WHERE user_id = $1 AND (directory = $2 OR directory LIKE $3)`
+		_, err := r.DB.ExecContext(ctx, query, currentUser.ID, path, pattern)
+		if err != nil {
+			return false, fmt.Errorf("failed to delete directory: %w", err)
+		}
+	} else {
+		// Only delete if empty
+		countQuery := `SELECT COUNT(*) FROM files WHERE user_id = $1 AND directory = $2`
+		var count int
+		err := r.DB.QueryRowContext(ctx, countQuery, currentUser.ID, path).Scan(&count)
+		if err != nil {
+			return false, fmt.Errorf("failed to check directory: %w", err)
+		}
+
+		if count > 0 {
+			return false, fmt.Errorf("directory not empty")
 		}
 	}
 
-	return nodes, nil
+	return true, nil
 }
-
-// Edges resolves the edges field for a learning plan
-func (r *learningPlanResolver) Edges(ctx context.Context, obj *model.LearningPlan) ([]*model.LearningPlanEdge, error) {
-	var edges []*model.LearningPlanEdge
-	err := r.DB.Select(&edges, `
-		SELECT id, learning_plan_id, source_node_id, target_node_id, created_at
-		FROM learning_plan_edges
-		WHERE learning_plan_id = $1
-		ORDER BY created_at ASC
-	`, obj.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch learning plan edges: %w", err)
+func (r *mutationResolver) MoveFile(ctx context.Context, id uuid.UUID, newDirectory string) (*model.File, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
 	}
 
-	return edges, nil
+	query := `UPDATE files SET directory = $1, updated_at = NOW()
+	          WHERE id = $2 AND user_id = $3
+	          RETURNING id, user_id, filename, directory, original_filename, mime_type,
+	          file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id,
+	          storage_path, tags, description, created_at, updated_at`
+
+	file, err := scanFile(r.DB.QueryRowContext(ctx, query, newDirectory, id, currentUser.ID))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("file not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to move file: %w", err)
+	}
+
+	return file, nil
+}
+func (r *queryResolver) Files(ctx context.Context, filter *model.FileFilter, limit *int, offset *int) (*model.FileConnection, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	limitVal := 50
+	if limit != nil {
+		limitVal = *limit
+	}
+	offsetVal := 0
+	if offset != nil {
+		offsetVal = *offset
+	}
+
+	// Build query with filters
+	query := `SELECT id, user_id, filename, directory, original_filename, mime_type,
+	          file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id,
+	          storage_path, tags, description, created_at, updated_at
+	          FROM files WHERE user_id = $1`
+	args := []interface{}{currentUser.ID}
+	argCount := 1
+
+	if filter != nil {
+		if filter.Directory != nil {
+			argCount++
+			query += fmt.Sprintf(" AND directory = $%d", argCount)
+			args = append(args, *filter.Directory)
+		}
+		if filter.MimeType != nil {
+			argCount++
+			query += fmt.Sprintf(" AND mime_type = $%d", argCount)
+			args = append(args, *filter.MimeType)
+		}
+		if filter.SearchQuery != nil {
+			argCount++
+			query += fmt.Sprintf(" AND (filename ILIKE $%d OR description ILIKE $%d)", argCount, argCount)
+			args = append(args, "%"+*filter.SearchQuery+"%")
+		}
+		if filter.Tags != nil && len(filter.Tags) > 0 {
+			argCount++
+			query += fmt.Sprintf(" AND tags && $%d", argCount)
+			args = append(args, pq.Array(filter.Tags))
+		}
+	}
+
+	// Count total
+	countQuery := strings.Replace(query, "SELECT id, user_id, filename, directory, original_filename, mime_type, file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id, storage_path, tags, description, created_at, updated_at", "SELECT COUNT(*)", 1)
+	var totalCount int
+	err := r.DB.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count files: %w", err)
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY created_at DESC"
+	argCount++
+	query += fmt.Sprintf(" LIMIT $%d", argCount)
+	args = append(args, limitVal)
+	argCount++
+	query += fmt.Sprintf(" OFFSET $%d", argCount)
+	args = append(args, offsetVal)
+
+	rows, err := r.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query files: %w", err)
+	}
+	defer rows.Close()
+
+	files := []*model.File{}
+	for rows.Next() {
+		file, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+
+	hasMore := (offsetVal + len(files)) < totalCount
+
+	return &model.FileConnection{
+		Nodes:      files,
+		TotalCount: totalCount,
+		HasMore:    hasMore,
+	}, nil
+}
+func (r *queryResolver) File(ctx context.Context, id uuid.UUID) (*model.File, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	query := `SELECT id, user_id, filename, directory, original_filename, mime_type,
+	          file_size, telegram_file_id, telegram_file_unique_id, telegram_message_id,
+	          storage_path, tags, description, created_at, updated_at
+	          FROM files WHERE id = $1 AND user_id = $2`
+
+	file, err := scanFile(r.DB.QueryRowContext(ctx, query, id, currentUser.ID))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("file not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query file: %w", err)
+	}
+
+	return file, nil
+}
+func (r *queryResolver) Directories(ctx context.Context, parentPath *string) ([]*model.Directory, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	parent := "/"
+	if parentPath != nil {
+		parent = *parentPath
+	}
+
+	// Get subdirectories
+	query := `SELECT DISTINCT directory FROM files
+	          WHERE user_id = $1 AND directory LIKE $2
+	          ORDER BY directory`
+
+	pattern := parent
+	if !strings.HasSuffix(pattern, "/") {
+		pattern += "/"
+	}
+	pattern += "%"
+
+	rows, err := r.DB.QueryContext(ctx, query, currentUser.ID, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query directories: %w", err)
+	}
+	defer rows.Close()
+
+	dirMap := make(map[string]bool)
+	for rows.Next() {
+		var dir string
+		if err := rows.Scan(&dir); err != nil {
+			return nil, err
+		}
+		// Extract immediate subdirectory
+		rel := strings.TrimPrefix(dir, parent)
+		rel = strings.TrimPrefix(rel, "/")
+		parts := strings.Split(rel, "/")
+		if len(parts) > 0 && parts[0] != "" {
+			subdir := filepath.Join(parent, parts[0])
+			dirMap[subdir] = true
+		}
+	}
+
+	directories := []*model.Directory{}
+	for dir := range dirMap {
+		// Count files in this directory
+		countQuery := `SELECT COUNT(*) FROM files WHERE user_id = $1 AND directory = $2`
+		var fileCount int
+		err := r.DB.QueryRowContext(ctx, countQuery, currentUser.ID, dir).Scan(&fileCount)
+		if err != nil {
+			fileCount = 0
+		}
+
+		// Get subdirectories
+		subQuery := `SELECT DISTINCT directory FROM files WHERE user_id = $1 AND directory LIKE $2`
+		subPattern := dir
+		if !strings.HasSuffix(subPattern, "/") {
+			subPattern += "/"
+		}
+		subPattern += "%"
+
+		subRows, err := r.DB.QueryContext(ctx, subQuery, currentUser.ID, subPattern)
+		subdirs := []string{}
+		if err == nil {
+			defer subRows.Close()
+			subDirMap := make(map[string]bool)
+			for subRows.Next() {
+				var subDir string
+				if err := subRows.Scan(&subDir); err == nil {
+					rel := strings.TrimPrefix(subDir, dir)
+					rel = strings.TrimPrefix(rel, "/")
+					parts := strings.Split(rel, "/")
+					if len(parts) > 0 && parts[0] != "" {
+						subDirMap[parts[0]] = true
+					}
+				}
+			}
+			for s := range subDirMap {
+				subdirs = append(subdirs, s)
+			}
+		}
+
+		parentDir := parent
+		if dir == "/" {
+			parentDir = ""
+		}
+
+		directories = append(directories, &model.Directory{
+			Path:           dir,
+			Parent:         &parentDir,
+			Subdirectories: subdirs,
+			FileCount:      fileCount,
+		})
+	}
+
+	return directories, nil
+}
+func (r *queryResolver) Directory(ctx context.Context, path string) (*model.Directory, error) {
+	currentUser := auth.UserFromContext(ctx)
+	if currentUser == nil {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Count files in this directory
+	countQuery := `SELECT COUNT(*) FROM files WHERE user_id = $1 AND directory = $2`
+	var fileCount int
+	err := r.DB.QueryRowContext(ctx, countQuery, currentUser.ID, path).Scan(&fileCount)
+	if err != nil {
+		fileCount = 0
+	}
+
+	// Get subdirectories
+	subQuery := `SELECT DISTINCT directory FROM files WHERE user_id = $1 AND directory LIKE $2`
+	pattern := path
+	if !strings.HasSuffix(pattern, "/") {
+		pattern += "/"
+	}
+	pattern += "%"
+
+	rows, err := r.DB.QueryContext(ctx, subQuery, currentUser.ID, pattern)
+	subdirs := []string{}
+	if err == nil {
+		defer rows.Close()
+		subDirMap := make(map[string]bool)
+		for rows.Next() {
+			var dir string
+			if err := rows.Scan(&dir); err == nil {
+				rel := strings.TrimPrefix(dir, path)
+				rel = strings.TrimPrefix(rel, "/")
+				parts := strings.Split(rel, "/")
+				if len(parts) > 0 && parts[0] != "" {
+					subDirMap[parts[0]] = true
+				}
+			}
+		}
+		for s := range subDirMap {
+			subdirs = append(subdirs, s)
+		}
+	}
+
+	// Get parent directory
+	parentDir := "/"
+	if path != "/" {
+		parentDir = filepath.Dir(path)
+	}
+
+	return &model.Directory{
+		Path:           path,
+		Parent:         &parentDir,
+		Subdirectories: subdirs,
+		FileCount:      fileCount,
+	}, nil
+}
+*/
+
+// Helper function to scan a reminder from database rows
+func scanReminder(scanner interface{ Scan(...interface{}) error }) (*model.Reminder, error) {
+	var reminder model.Reminder
+	var description, repeatRule sql.NullString
+	var completedAt, repeatEnd sql.NullTime
+	var eventID uuid.NullUUID
+	var notificationChannels, tags pq.StringArray
+	var reminderTimes pq.Int64Array
+
+	err := scanner.Scan(
+		&reminder.ID,
+		&reminder.UserID,
+		&reminder.Title,
+		&description,
+		&reminder.DueTime,
+		&reminder.Completed,
+		&completedAt,
+		&reminder.Priority,
+		&reminder.RepeatPattern,
+		&repeatRule,
+		&repeatEnd,
+		&eventID,
+		&notificationChannels,
+		&reminderTimes,
+		&tags,
+		&reminder.CreatedAt,
+		&reminder.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle nullable fields
+	if description.Valid {
+		reminder.Description = &description.String
+	}
+	if repeatRule.Valid {
+		reminder.RepeatRule = &repeatRule.String
+	}
+	if completedAt.Valid {
+		reminder.CompletedAt = &completedAt.Time
+	}
+	if repeatEnd.Valid {
+		reminder.RepeatEnd = &repeatEnd.Time
+	}
+	if eventID.Valid {
+		reminder.EventID = &eventID.UUID
+	}
+
+	// Handle array fields
+	reminder.NotificationChannels = notificationChannels
+	reminder.Tags = tags
+	
+	// Convert Int64Array to []int
+	reminder.ReminderTimes = make([]int, len(reminderTimes))
+	for i, v := range reminderTimes {
+		reminder.ReminderTimes[i] = int(v)
+	}
+
+	return &reminder, nil
 }

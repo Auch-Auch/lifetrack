@@ -42,6 +42,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Route to specific handlers
     if callback_data == "cancel":
         await query.edit_message_text("❌ Cancelled. Use /session to try again.")
+    elif callback_data.startswith("files_list:"):
+        # Import here to avoid circular dependency
+        from . import file_handlers
+        await file_handlers.list_files_command(update, context)
+    elif callback_data.startswith("files_download"):
+        from . import file_handlers
+        await file_handlers.download_file_command(update, context)
     elif callback_data == "start_session_menu":
         await show_skill_selection(update, context)
     elif callback_data.startswith("start_skill:") or callback_data.startswith("quick_start:"):
