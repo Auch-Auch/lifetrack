@@ -19,6 +19,7 @@ import {
   FolderPlus,
   RefreshCw,
   X,
+  Upload,
 } from 'lucide-react'
 import { formatFileSize, getFileIcon, getFiles, getDirectories } from '@/lib/files'
 import type { File, Directory } from '@/lib/files'
@@ -43,6 +44,9 @@ export default function FilesPage() {
   const [draggedFile, setDraggedFile] = useState<File | null>(null)
   const [allFiles, setAllFiles] = useState<File[]>([])
   const [allDirectories, setAllDirectories] = useState<Directory[]>([])
+  const [currentDirectory, setCurrentDirectory] = useState('/')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   
   const {
     loading,
@@ -216,6 +220,8 @@ export default function FilesPage() {
         next.delete(path)
       } else {
         next.add(path)
+        // Set as current directory when expanding
+        setCurrentDirectory(path)
       }
       return next
     })
@@ -300,6 +306,52 @@ export default function FilesPage() {
       toast.error('Failed to download file')
     }
   }
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    try {
+      const file = files[0] // Upload one file at a time
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('directory', currentDirectory)
+
+      const token = localStorage.getItem('lifetrack_auth_token')
+      if (!token) {
+        toast.error('Not authenticated')
+        return
+      }
+
+      const response = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Upload failed')
+      }
+
+      const result = await response.json()
+      toast.success(`File "${result.filename}" uploaded successfully`)
+      
+      // Reload files to show the new file
+      await loadAllFiles()
+    } catch (err) {
+      console.error('Upload error:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to upload file')
+    } finally {
+      setUploading(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
   
   const handleDragStart = (e: React.DragEvent, file: File) => {
     e.dataTransfer.effectAllowed = 'move'
@@ -377,12 +429,17 @@ export default function FilesPage() {
     }
     
     if (node.type === 'folder') {
+      const isCurrentDir = node.path === currentDirectory
       return (
         <div key={node.path}>
           <div
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, node.path)}
-            className="flex items-center gap-2 py-2 px-3 hover:bg-[hsl(var(--muted)_/_0.3)] rounded cursor-pointer"
+            className={`flex items-center gap-2 py-2 px-3 rounded cursor-pointer ${
+              isCurrentDir 
+                ? 'bg-[hsl(var(--primary)_/_0.15)] hover:bg-[hsl(var(--primary)_/_0.2)]' 
+                : 'hover:bg-[hsl(var(--muted)_/_0.3)]'
+            }`}
             style={{ paddingLeft: `${level * 20 + 12}px` }}
             onClick={() => toggleFolder(node.path)}
           >
@@ -422,6 +479,14 @@ export default function FilesPage() {
           <p className="text-[hsl(var(--muted-foreground))] mt-1">
             {filteredFiles.length} files {searchQuery || extensionFilter ? '(filtered)' : 'total'}
           </p>
+          {currentDirectory !== '/' && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="info">
+                <Folder size={12} className="mr-1" />
+                Upload to: {currentDirectory}
+              </Badge>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button
@@ -441,6 +506,22 @@ export default function FilesPage() {
             <FolderPlus size={16} />
             New Folder
           </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => fileInputRef.current?.click()}
+            loading={uploading}
+            disabled={uploading}
+          >
+            <Upload size={16} />
+            {uploading ? 'Uploading...' : 'Upload File'}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => handleUpload(e.target.files)}
+          />
         </div>
       </div>
       

@@ -443,6 +443,7 @@ async def download_file_command(update: Update, context: ContextTypes.DEFAULT_TY
                     mimeType
                     fileSize
                     telegramFileId
+                    storagePath
                     description
                 }
             }
@@ -456,16 +457,14 @@ async def download_file_command(update: Update, context: ContextTypes.DEFAULT_TY
                 return
             
             telegram_file_id = file.get('telegramFileId')
+            mime_type = file['mimeType']
+            caption = f"📄 {file['originalFilename']}\n"
+            if file.get('description'):
+                caption += f"📝 {file['description']}\n"
+            caption += f"📂 {file['directory']}"
             
             if telegram_file_id:
-                # Re-send the file using Telegram's file_id
-                caption = f"📄 {file['originalFilename']}\n"
-                if file.get('description'):
-                    caption += f"📝 {file['description']}\n"
-                caption += f"📂 {file['directory']}"
-                
-                mime_type = file['mimeType']
-                
+                # Re-send the file using Telegram's cached file_id
                 if mime_type.startswith('image/'):
                     await query.message.reply_photo(
                         photo=telegram_file_id,
@@ -477,13 +476,65 @@ async def download_file_command(update: Update, context: ContextTypes.DEFAULT_TY
                         caption=caption
                     )
                     
-                logger.info(f"File downloaded: {file['id']} by user {update.effective_user.id}")
+                logger.info(f"File downloaded (cached): {file['id']} by user {update.effective_user.id}")
             else:
-                # File not cached in Telegram, need to send from storage
-                # This would require implementing file serving through bot
-                await query.message.reply_text(
-                    "⚠️ File not cached in Telegram. Download from storage not yet implemented."
-                )
+                # File not cached in Telegram - upload from storage
+                storage_path = file.get('storagePath')
+                if not storage_path:
+                    await query.message.reply_text("❌ Storage path not found")
+                    return
+                
+                # Construct full path to file
+                file_path = Path(Config.FILE_STORAGE_PATH) / storage_path
+                
+                if not file_path.exists():
+                    await query.message.reply_text(
+                        f"❌ File not found on disk: {storage_path}\n\n"
+                        "The file may have been moved or deleted."
+                    )
+                    return
+                
+                # Upload file to Telegram and send to user
+                try:
+                    if mime_type.startswith('image/'):
+                        sent_message = await query.message.reply_photo(
+                            photo=open(file_path, 'rb'),
+                            caption=caption + "\n\n⚡ Cached in Telegram for future downloads"
+                        )
+                        new_telegram_file_id = sent_message.photo[-1].file_id
+                    else:
+                        sent_message = await query.message.reply_document(
+                            document=open(file_path, 'rb'),
+                            caption=caption + "\n\n⚡ Cached in Telegram for future downloads",
+                            filename=file['originalFilename']
+                        )
+                        new_telegram_file_id = sent_message.document.file_id
+                    
+                    # Update database with Telegram file_id for future use
+                    update_mutation = """
+                    mutation UpdateFile($id: UUID!, $input: UpdateFileInput!) {
+                        updateFile(id: $id, input: $input) {
+                            id
+                            telegramFileId
+                        }
+                    }
+                    """
+                    
+                    await gql_client.execute(
+                        update_mutation,
+                        {
+                            "id": file_id,
+                            "input": {"telegramFileId": new_telegram_file_id}
+                        }
+                    )
+                    
+                    logger.info(f"File uploaded to Telegram and cached: {file['id']} by user {update.effective_user.id}")
+                    
+                except Exception as upload_error:
+                    logger.error(f"Error uploading file to Telegram: {upload_error}", exc_info=True)
+                    await query.message.reply_text(
+                        f"❌ Error uploading file: {str(upload_error)}"
+                    )
                 
     except Exception as e:
         logger.error(f"Download file error: {e}", exc_info=True)
