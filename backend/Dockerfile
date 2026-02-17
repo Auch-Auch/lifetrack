@@ -10,10 +10,10 @@ RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
+# Copy source code (includes generated GraphQL models)
 COPY . .
 
-# Build binary
+# Build binary (go build will use the local packages from go.mod)
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
 
 # Final stage
