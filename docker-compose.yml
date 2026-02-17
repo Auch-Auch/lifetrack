@@ -92,15 +92,6 @@ services:
       FILE_STORAGE_PATH: /data/files
       FILE_TEMP_PATH: /tmp/lifetrack_files
       # Qwen 2.5 Coder 7B model configuration (optimized for structured output)
-      MODEL_PATH: /app/models/qwen2.5-coder-7b-instruct-q5_k_m.gguf
-      MODEL_N_CTX: 8192  # Qwen supports 32K, using 8K for speed/quality balance
-      MODEL_N_THREADS: ${MODEL_N_THREADS:-8}
-      MODEL_N_GPU_LAYERS: ${MODEL_N_GPU_LAYERS:-0}
-      MODEL_TEMPERATURE: 0.1  # Low for structured output
-      MODEL_TEMPERATURE_CREATIVE: 0.6  # For natural language
-      MODEL_MAX_TOKENS_QUERY: 384
-      MODEL_MAX_TOKENS_INTENT: 192
-      MODEL_MAX_TOKENS_ERROR: 96
     volumes:
       # Mount local models directory (download models here)
       - ./models:/app/models:ro
