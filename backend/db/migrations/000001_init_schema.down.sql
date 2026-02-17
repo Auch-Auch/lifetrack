@@ -4,6 +4,10 @@
 -- Drop view
 DROP VIEW IF EXISTS upcoming_reminders;
 
+-- Drop directories table
+DROP TRIGGER IF EXISTS update_directories_updated_at ON directories;
+DROP TABLE IF EXISTS directories;
+
 -- Drop files table
 DROP TRIGGER IF EXISTS update_files_updated_at ON files;
 DROP INDEX IF EXISTS idx_files_created_at;

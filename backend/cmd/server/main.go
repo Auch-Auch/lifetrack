@@ -21,10 +21,12 @@ import (
 const defaultPort = "8080"
 
 func main() {
+	// Load .env file if it exists (optional in Docker)
 	err := godotenv.Load()
-    if err != nil {
-        log.Fatal("Error loading .env file")
-    }
+	if err != nil {
+		log.Println("Error loading .env file (this is expected in Docker)")
+	}
+	
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
