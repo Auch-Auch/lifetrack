@@ -125,6 +125,7 @@ services:
     container_name: lifetrack_frontend
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      BACKEND_URL: http://backend:8080
       NODE_ENV: production
     # Port not exposed externally - only accessible through Caddy
     expose:

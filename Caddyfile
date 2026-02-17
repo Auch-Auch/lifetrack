@@ -17,12 +17,7 @@
         Permissions-Policy "geolocation=(), microphone=(), camera=()"     
     }
 
-    # Frontend
-    handle /* {
-        reverse_proxy frontend:3000
-    }
-
-    # Backend GraphQL API
+    # Backend GraphQL API (must come before /* catch-all)
     handle /query* {
         reverse_proxy backend:8080
     }
@@ -41,6 +36,11 @@
     # Comment this out for development
     handle /playground* {
         respond "Not available in production" 403
+    }
+
+    # Frontend (catch-all, must be last)
+    handle /* {
+        reverse_proxy frontend:3000
     }
 
     # Note: Rate limiting requires a custom Caddy build with the rate_limit plugin
