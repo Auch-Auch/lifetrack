@@ -38,6 +38,5 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Generated files
-graph/generated.go
-graph/model/models_gen.go
+# Note: GraphQL generated files (graph/generated.go, graph/model/models_gen.go)
+# are committed to version control for reproducible Docker builds
