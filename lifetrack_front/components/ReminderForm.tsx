@@ -143,12 +143,12 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
         </label>
         <textarea
           {...register('description')}
-          className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:border-transparent min-h-[100px]"
+          className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:border-transparent min-h-[100px] text-sm"
           placeholder="Optional description..."
         />
       </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Due Time"
           type="datetime-local"
@@ -162,7 +162,7 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
           </label>
           <select
             {...register('priority')}
-            className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+            className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] text-sm"
           >
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
@@ -171,14 +171,14 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
         </div>
       </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1.5">
             Repeat Pattern
           </label>
           <select
             {...register('repeatPattern')}
-            className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+            className="w-full px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] text-sm"
           >
             <option value="NONE">None</option>
             <option value="DAILY">Daily</option>
@@ -212,7 +212,7 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
         <label className="block text-sm font-medium mb-1.5">
           Notification Channels
         </label>
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -220,7 +220,7 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
               onChange={() => toggleChannel('browser')}
               className="w-4 h-4"
             />
-            <span>Browser</span>
+            <span className="text-sm">Browser</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -229,7 +229,7 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
               onChange={() => toggleChannel('telegram')}
               className="w-4 h-4"
             />
-            <span>Telegram</span>
+            <span className="text-sm">Telegram</span>
           </label>
         </div>
       </div>
@@ -245,12 +245,13 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
                 type="number"
                 value={time}
                 onChange={(e) => updateReminderTime(index, parseInt(e.target.value) || 0)}
-                className="flex-1 px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+                className="flex-1 px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] text-sm"
                 min={0}
               />
               <Button
                 type="button"
                 variant="ghost"
+                size="sm"
                 onClick={() => removeReminderTime(index)}
                 disabled={reminderTimes.length === 1}
               >
@@ -258,7 +259,7 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
               </Button>
             </div>
           ))}
-          <Button type="button" variant="ghost" onClick={addReminderTime}>
+          <Button type="button" variant="ghost" onClick={addReminderTime} className="w-full sm:w-auto">
             Add Reminder Time
           </Button>
         </div>
@@ -274,10 +275,10 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-            className="flex-1 px-3 py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+            className="flex-1 px-4 py-3 md:px-3 md:py-2 rounded-[var(--radius)] bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] min-h-[44px] text-base md:text-sm"
             placeholder="Add a tag..."
           />
-          <Button type="button" variant="ghost" onClick={addTag}>
+          <Button type="button" variant="ghost" size="sm" onClick={addTag}>
             Add
           </Button>
         </div>
@@ -302,13 +303,13 @@ export default function ReminderForm({ reminder, onSuccess, onCancel }: Props) {
         )}
       </div>
       
-      <div className="flex gap-2 justify-end pt-4">
+      <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-4">
         {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel}>
+          <Button type="button" variant="ghost" onClick={onCancel} className="w-full sm:w-auto">
             Cancel
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
           {isSubmitting ? 'Saving...' : reminder ? 'Update' : 'Create'} Reminder
         </Button>
       </div>

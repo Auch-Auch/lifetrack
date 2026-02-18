@@ -1,7 +1,3 @@
-"""
-Message handlers for text-based interactions (note and event creation)
-"""
-
 import logging
 import re
 from datetime import datetime, timedelta
@@ -13,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Handle text messages for creating notes, events, linking accounts, etc.
+    Handle text messages for creating notes, events, etc.
     """
     # Check if we're awaiting specific input
     user_data = context.user_data
@@ -57,12 +53,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await finalize_event_from_template(update, context)
         user_data['awaiting_event_title'] = False
         
+    elif user_data.get('awaiting_reminder'):
+        await create_reminder_from_message(update, context)
+        user_data['awaiting_reminder'] = False
+        
     # Otherwise, provide helpful response
     else:
         await update.message.reply_text(
             "💡 **Quick Commands:**\n\n"
             "• /session - Manage learning sessions\n"
             "• /schedule - View calendar & create events\n"
+            "• /reminders - Manage reminders\n"
             "• /notes - View & create notes\n"
             "• /stats - Check your progress\n\n"
             "Use buttons in these commands for quick actions!"
@@ -130,27 +131,8 @@ async def process_password(update: Update, context: ContextTypes.DEFAULT_TYPE, g
         user_client = GraphQLClient(gql_client.url, auth_payload['token'], gql_client.timeout)
         context.user_data['gql_client'] = user_client
         
-        # Link telegram account
-        telegram_id = update.effective_user.id
-        telegram_username = update.effective_user.username or update.effective_user.first_name
-        
-        try:
-            link_query = """
-            mutation LinkTelegram($telegramId: Int!, $username: String) {
-                linkTelegram(telegramId: $telegramId, telegramUsername: $username) {
-                    id
-                    telegramId
-                }
-            }
-            """
-            await user_client.execute(link_query, {
-                "telegramId": telegram_id,
-                "username": telegram_username
-            })
-        except Exception as e:
-            logger.warning(f"Failed to auto-link telegram: {e}")
-        
         # Add user to active users for notification tracking
+        telegram_id = update.effective_user.id
         active_users = context.bot_data.get('active_users', {})
         active_users[telegram_id] = {
             'gql_client': user_client,
@@ -159,16 +141,17 @@ async def process_password(update: Update, context: ContextTypes.DEFAULT_TYPE, g
         }
         logger.info(f"Added user {telegram_id} to active users for notifications")
         
+        # Import keyboard function
+        from handlers.commands import get_main_keyboard
+        
         await update.effective_chat.send_message(
             f"✅ <b>Login Successful!</b>\n\n"
             f"Welcome, {auth_payload['user'].get('name', 'User')}!\n"
             f"📧 {auth_payload['user']['email']}\n\n"
             f"You can now use all bot commands.\n\n"
-            f"⚡ Try:\n"
-            f"• /session - Manage learning sessions\n"
-            f"• /schedule - View calendar\n"
-            f"• /stats - Check progress",
-            parse_mode='HTML'
+            f"⚡ Use the buttons below to get started!",
+            parse_mode='HTML',
+            reply_markup=get_main_keyboard()
         )
         
     except Exception as e:
@@ -488,4 +471,142 @@ async def finalize_event_from_template(update: Update, context: ContextTypes.DEF
     except Exception as e:
         logger.error(f"Error finalizing event: {e}", exc_info=True)
         await update.message.reply_text("❌ Error creating event. Please try again.")
-        context.user_data.pop('event_template', None)
+
+async def create_reminder_from_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Create a reminder from user message
+    Expected format:
+    Title
+    Description (optional)
+    Due: 2026-02-20 14:30
+    Priority: HIGH (optional: LOW, MEDIUM, HIGH)
+    """
+    message_text = update.message.text.strip()
+    gql_client = context.user_data.get('gql_client')
+    
+    try:
+        import re
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        
+        # Get user's timezone or default to UTC
+        # TODO: Store user timezone preference in user_data
+        user_timezone = context.user_data.get('timezone', 'UTC')
+        
+        lines = message_text.split('\n')
+        
+        # Parse components
+        title = lines[0].strip() if lines else "Reminder"
+        description = None
+        due_time = None
+        priority = "MEDIUM"  # Default priority
+        
+        # Parse remaining lines for metadata
+        description_lines = []
+        for line in lines[1:]:
+            line = line.strip()
+            
+            # Check for Due time
+            due_match = re.match(r'Due:\s*(.+)', line, re.IGNORECASE)
+            if due_match:
+                due_str = due_match.group(1).strip()
+                try:
+                    # Try parsing various date formats
+                    for fmt in ['%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M', '%m/%d %H:%M']:
+                        try:
+                            due_time = datetime.strptime(due_str, fmt)
+                            # Localize to user's timezone (assume input is in their local time)
+                            try:
+                                tz = ZoneInfo(user_timezone)
+                                due_time = due_time.replace(tzinfo=tz)
+                            except Exception:
+                                # Fallback: treat as naive datetime, backend will handle
+                                pass
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if not due_time:
+                        # Try ISO format
+                        due_time = datetime.fromisoformat(due_str.replace('Z', '+00:00'))
+                except Exception:
+                    pass
+                continue
+            
+            # Check for priority
+            priority_match = re.match(r'Priority:\s*(\w+)', line, re.IGNORECASE)
+            if priority_match:
+                priority_value = priority_match.group(1).upper()
+                if priority_value in ['LOW', 'MEDIUM', 'HIGH']:
+                    priority = priority_value
+                continue
+            
+            # Otherwise it's part of description
+            if line:
+                description_lines.append(line)
+        
+        if description_lines:
+            description = '\n'.join(description_lines)
+        
+        if not due_time:
+            await update.message.reply_text(
+                "❌ **Invalid Format**\n\n"
+                "Please include a due date/time:\n"
+                "`Due: 2026-02-20 14:30`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Create reminder
+        mutation = """
+        mutation CreateReminder($input: CreateReminderInput!) {
+            createReminder(input: $input) {
+                id
+                title
+                dueTime
+                priority
+            }
+        }
+        """
+        
+        result = await gql_client.execute(mutation, {
+            'input': {
+                'title': title,
+                'description': description,
+                'dueTime': due_time.isoformat() if due_time.tzinfo else due_time.strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
+                'priority': priority,
+                'repeatPattern': 'NONE',
+                'notificationChannels': ['telegram'],
+                'reminderTimes': [0]  # Notify at due time
+            }
+        })
+        
+        reminder = result.get('createReminder')
+        
+        if reminder:
+            priority_emoji = {'LOW': '🔵', 'MEDIUM': '🟡', 'HIGH': '🔴'}.get(priority, '⚪')
+            
+            await update.message.reply_text(
+                f"✅ **Reminder Created!**\n\n"
+                f"{priority_emoji} {reminder['title']}\n"
+                f"📅 Due: {due_time.strftime('%A, %B %d at %I:%M %p')}\n\n"
+                "You'll receive a notification when it's due.\n\n"
+                "Use /reminders to view all your reminders.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text("❌ Failed to create reminder.")
+    
+    except Exception as e:
+        logger.error(f"Error creating reminder: {e}", exc_info=True)
+        error_msg = str(e)
+        await update.message.reply_text(
+            f"❌ **Error Creating Reminder**\n\n"
+            f"Error: {error_msg}\n\n"
+            "Please use this format:\n"
+            "`Title\n"
+            "Description (optional)\n"
+            "Due: 2026-02-20 14:30\n"
+            "Priority: HIGH`",
+            parse_mode='Markdown'
+        )

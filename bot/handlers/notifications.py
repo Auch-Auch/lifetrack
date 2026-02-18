@@ -4,8 +4,8 @@ Notification handler for sending event reminders and alerts to users
 
 import logging
 import asyncio
-from datetime import datetime
-from telegram import Bot
+from datetime import datetime, timezone
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ async def check_and_send_notifications(bot: Bot, active_users: dict) -> None:
     """
     if not active_users:
         return
+    
+    current_time = datetime.now(timezone.utc)
     
     try:
         # Check notifications for each active user
@@ -54,23 +56,45 @@ async def check_and_send_notifications(bot: Bot, active_users: dict) -> None:
                 if not notifications:
                     continue
                 
-                logger.info(f"Found {len(notifications)} pending notifications for user {telegram_id}")
-                
-                # Process each notification for this user
+                # Filter notifications that are due (within next 2 minutes to avoid missing any)
+                due_notifications = []
                 for notif in notifications:
-                    # Only send telegram notifications
                     if notif['channel'] != 'telegram':
                         continue
                     
+                    # Parse scheduled time
+                    scheduled_time = datetime.fromisoformat(notif['scheduledTime'].replace('Z', '+00:00'))
+                    # Check if notification is due (scheduled time has passed or within next 2 minutes)
+                    time_diff = (scheduled_time - current_time).total_seconds()
+                    
+                    if time_diff <= 120:  # Within next 2 minutes
+                        due_notifications.append(notif)
+                
+                if not due_notifications:
+                    continue
+                    
+                logger.info(f"Found {len(due_notifications)} due notifications for user {telegram_id}")
+                
+                # Process each notification for this user
+                for notif in due_notifications:
                     # Format message based on notification type
                     message = await format_notification_message(notif, gql_client)
+                    
+                    # Create inline keyboard for reminders
+                    reply_markup = None
+                    if notif['notificationType'] == 'reminder' and notif.get('reminderId'):
+                        keyboard = [[
+                            InlineKeyboardButton("✅ Mark Complete", callback_data=f"reminder:complete:{notif['reminderId']}")
+                        ]]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     # Send notification to this user
                     try:
                         await bot.send_message(
                             chat_id=telegram_id,
                             text=message,
-                            parse_mode='HTML'
+                            parse_mode='HTML',
+                            reply_markup=reply_markup
                         )
                         
                         # Mark notification as sent
@@ -176,7 +200,7 @@ async def format_notification_message(notif: dict, gql_client) -> str:
                     message += f"📝 {reminder['description']}\n"
                 
                 message += f"📅 Due: {due_time.strftime('%A, %B %d at %I:%M %p')}\n"
-                message += f"\n💡 Use /schedule to manage reminders"
+                message += f"\n💡 Use /reminders to manage reminders"
     
     else:
         # Generic notification
@@ -185,14 +209,14 @@ async def format_notification_message(notif: dict, gql_client) -> str:
     return message
 
 
-async def start_notification_loop(bot: Bot, active_users: dict, interval: int = 60) -> None:
+async def start_notification_loop(bot: Bot, active_users: dict, interval: int = 15) -> None:
     """
     Start the notification checking loop for all active users
     
     Args:
         bot: Telegram Bot instance
         active_users: Dict mapping telegram_id to user session data
-        interval: Check interval in seconds (default: 60)
+        interval: Check interval in seconds (default: 15 for better accuracy)
     """
     logger.info(f"Starting notification loop (checking every {interval}s)")
     

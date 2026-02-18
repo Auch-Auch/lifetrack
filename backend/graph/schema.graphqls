@@ -67,7 +67,6 @@ enum Recurrence {
 type EventNotifications {
   enabled: Boolean!
   channels: [String!]!
-  reminderMinutes: [Int!]!
 }
 
 type Event {
@@ -244,7 +243,6 @@ input UpdateActivityInput {
 input EventNotificationsInput {
   enabled: Boolean!
   channels: [String!]!
-  reminderMinutes: [Int!]!
 }
 
 # Input for creating calendar events

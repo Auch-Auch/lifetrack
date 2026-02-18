@@ -47,7 +47,7 @@ export default function Home() {
   }
 
   return (
-    <main className="container mx-auto p-6">
+    <main className="container mx-auto p-4 sm:p-6">
       <PageHeader
         title="Welcome to LifeTrack"
         description="Your personal hub for tracking self-development and learning activities."
@@ -63,10 +63,10 @@ export default function Home() {
         <div className="mb-8">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-semibold">Activities on {formatDate(selectedDate)}</h3>
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  <h3 className="text-base sm:text-lg font-semibold">{formatDate(selectedDate)}</h3>
+                  <p className="text-xs sm:text-sm text-[hsl(var(--muted-foreground))]">
                     {selectedActivities.length} {selectedActivities.length === 1 ? 'session' : 'sessions'}
                     {selectedActivities.length > 0 && (
                       <> · {formatDuration(selectedActivities.reduce((sum, a) => sum + a.duration, 0))}</>
@@ -77,6 +77,7 @@ export default function Home() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedDate(null)}
+                  className="self-start sm:self-center"
                 >
                   Close
                 </Button>
@@ -95,11 +96,11 @@ export default function Home() {
                     return (
                       <div
                         key={activity.id}
-                        className="flex items-start gap-4 p-4 bg-[hsl(var(--muted))]/30 rounded-[var(--radius)] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))] transition-colors"
+                        className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-[hsl(var(--muted))]/30 rounded-[var(--radius)] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))] transition-colors"
                       >
-                        <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-green-500" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-green-500 hidden sm:block" />
+                        <div className="flex-1 min-w-0 w-full">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
                             <h4 className="font-semibold text-sm">{activity.name}</h4>
                             {skill && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
@@ -125,7 +126,7 @@ export default function Home() {
                             </p>
                           )}
                         </div>
-                        <div className="flex-shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+                        <div className="flex-shrink-0 text-xs text-[hsl(var(--muted-foreground))] sm:ml-0 sm:self-start">
                           {new Date(activity.createdAt).toLocaleTimeString('en-US', {
                             hour: 'numeric',
                             minute: '2-digit',
@@ -141,7 +142,7 @@ export default function Home() {
         </div>
       )}
       
-      <div className="grid gap-6 md:grid-cols-3 mb-8">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 mb-6 sm:mb-8">
         <Card hoverable>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -186,17 +187,17 @@ export default function Home() {
       </div>
       
       <Card>
-        <CardContent className="py-8 text-center">
-          <h2 className="text-2xl font-semibold mb-3">Ready to start tracking?</h2>
-          <p className="text-[hsl(var(--muted-foreground))] mb-6 max-w-2xl mx-auto">
+        <CardContent className="py-6 sm:py-8 text-center px-4">
+          <h2 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">Ready to start tracking?</h2>
+          <p className="text-sm sm:text-base text-[hsl(var(--muted-foreground))] mb-4 sm:mb-6 max-w-2xl mx-auto">
             Explore your skills, log practice sessions with our timer, and watch your progress grow over time.
           </p>
-          <div className="flex items-center justify-center gap-4">
-            <Link href="/skill-map">
-              <Button size="lg">View Skills</Button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+            <Link href="/skill-map" className="w-full sm:w-auto">
+              <Button size="lg" className="w-full">View Skills</Button>
             </Link>
-            <Link href="/activities">
-              <Button variant="secondary" size="lg">Browse Activities</Button>
+            <Link href="/activities" className="w-full sm:w-auto">
+              <Button variant="secondary" size="lg" className="w-full">Browse Activities</Button>
             </Link>
           </div>
         </CardContent>

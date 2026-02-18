@@ -371,6 +371,102 @@ async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 @require_auth
+async def reminders_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle /reminders command - List and manage reminders
+    """
+    gql_client = get_user_client(context)
+    
+    if not gql_client:
+        await update.message.reply_text("❌ Error: Authentication issue. Please /logout and login again.")
+        return
+    
+    query = """
+    query GetReminders($limit: Int!) {
+        upcomingReminders(limit: $limit) {
+            id
+            title
+            description
+            dueTime
+            completed
+            priority
+        }
+        overdueReminders {
+            id
+            title
+            dueTime
+            priority
+        }
+    }
+    """
+    
+    try:
+        from datetime import datetime
+        
+        result = await gql_client.execute(query, {'limit': 20})
+        upcoming = result.get('upcomingReminders', [])
+        overdue = result.get('overdueReminders', [])
+        
+        message = "⏰ **Your Reminders**\n\n"
+        keyboard = []
+        
+        # Overdue reminders first
+        if overdue:
+            message += "🔴 **Overdue:**\n"
+            for reminder in overdue[:3]:
+                due_time = datetime.fromisoformat(reminder['dueTime'].replace('Z', '+00:00'))
+                priority_emoji = {'LOW': '🔵', 'MEDIUM': '🟡', 'HIGH': '🔴'}.get(reminder['priority'], '⚪')
+                
+                message += f"{priority_emoji} {reminder['title']}\n"
+                message += f"   Due: {due_time.strftime('%b %d, %I:%M %p')}\n"
+                
+                keyboard.append([InlineKeyboardButton(
+                    f"✓ {reminder['title'][:30]}",
+                    callback_data=f"reminder:complete:{reminder['id']}"
+                )])
+            message += "\n"
+        
+        # Upcoming reminders
+        if upcoming:
+            message += "📅 **Upcoming:**\n"
+            for reminder in upcoming[:5]:
+                due_time = datetime.fromisoformat(reminder['dueTime'].replace('Z', '+00:00'))
+                priority_emoji = {'LOW': '🔵', 'MEDIUM': '🟡', 'HIGH': '🔴'}.get(reminder['priority'], '⚪')
+                
+                message += f"{priority_emoji} {reminder['title']}\n"
+                message += f"   Due: {due_time.strftime('%b %d, %I:%M %p')}\n"
+                
+                keyboard.append([InlineKeyboardButton(
+                    f"✓ {reminder['title'][:30]}",
+                    callback_data=f"reminder:complete:{reminder['id']}"
+                )])
+            message += "\n"
+        
+        if not overdue and not upcoming:
+            message += "✨ No reminders! All clear.\n\n"
+        
+        # Action buttons
+        keyboard.append([
+            InlineKeyboardButton("➕ Create Reminder", callback_data="reminder:create"),
+            InlineKeyboardButton("📋 All", callback_data="reminder:all")
+        ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+        
+    except TimeoutError:
+        logger.error("Timeout fetching reminders")
+        await update.message.reply_text(
+            "⏱️ **Request Timed Out**\n\n"
+            "Backend is taking too long. Try again shortly.",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"Error in reminders command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Error fetching reminders. Please try again.")
+
+
+@require_auth
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /stats command - Show activity statistics

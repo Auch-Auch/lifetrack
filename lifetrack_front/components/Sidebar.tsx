@@ -38,7 +38,7 @@ export default function Sidebar({ collapsed = false, onAction }: Props) {
   }
 
   return (
-    <nav className="h-full p-2 relative flex flex-col">
+    <nav className="h-full p-2 md:p-2 relative flex flex-col">
       {/* Top section with profile and live session */}
       <div className="mb-3 pb-3 border-b border-[hsl(var(--border))]">
         <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between gap-2 mb-2'}`}>
@@ -47,12 +47,13 @@ export default function Sidebar({ collapsed = false, onAction }: Props) {
               <UserProfile collapsed={false} />
             </div>
           )}
+          {/* Hide toggle button on mobile since we have hamburger menu */}
           <Button
             variant="ghost"
             size="sm"
             onClick={onAction}
             aria-label="Toggle sidebar"
-            className="w-auto flex-shrink-0"
+            className="hidden md:flex w-auto flex-shrink-0"
           >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </Button>
@@ -62,7 +63,7 @@ export default function Sidebar({ collapsed = false, onAction }: Props) {
       </div>
 
       {/* Navigation items */}
-      <ul className="space-y-2 flex-1">
+      <ul className="space-y-1 md:space-y-2 flex-1">
         {navItems.map(({ href, label, icon: Icon }) => (
           <li key={href}>
             <Link
@@ -70,15 +71,15 @@ export default function Sidebar({ collapsed = false, onAction }: Props) {
               className={`
                 flex items-center rounded-[var(--radius)]
                 transition-all duration-[var(--transition-fast)]
-                ${collapsed ? 'justify-center h-12 w-12' : 'px-3 py-2'}
+                ${collapsed ? 'justify-center h-12 w-12' : 'px-4 py-3 md:px-3 md:py-2'}
                 ${isActive(href) 
                   ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-semibold' 
                   : 'hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]'
                 }
               `}
             >
-              <Icon size={18} />
-              <span className={collapsed ? 'sr-only' : 'ml-3'}>{label}</span>
+              <Icon size={20} className="md:w-[18px] md:h-[18px]" />
+              <span className={collapsed ? 'sr-only' : 'ml-3 text-base md:text-sm'}>{label}</span>
             </Link>
           </li>
         ))}

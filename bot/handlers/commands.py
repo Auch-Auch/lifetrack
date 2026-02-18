@@ -1,8 +1,28 @@
 import logging
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+
+
+def get_main_keyboard():
+    """Get the main command keyboard for authenticated users"""
+    keyboard = [
+        [KeyboardButton("/session"), KeyboardButton("/skills")],
+        [KeyboardButton("/schedule"), KeyboardButton("/reminders")],
+        [KeyboardButton("/notes"), KeyboardButton("/stats")],
+        [KeyboardButton("/files"), KeyboardButton("/help")],
+        [KeyboardButton("/logout")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
+
+
+def get_login_keyboard():
+    """Get a minimal keyboard for non-authenticated users"""
+    keyboard = [
+        [KeyboardButton("/start"), KeyboardButton("/help")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -17,15 +37,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 You're already connected to LifeTrack.
 
-⚡ **Commands:**
+⚡ **Use the buttons below or type commands:**
 • /session - Manage sessions & view skills
 • /schedule - View your calendar
-• /stats - Check your progress
+• /reminders - Manage reminders
 • /notes - Access your notes
+• /stats - Check your progress
 • /logout - Disconnect your account
 • /help - Full command list
 """
-        await update.message.reply_html(welcome_message)
+        await update.message.reply_html(welcome_message, reply_markup=get_main_keyboard())
         return
     
     # Ask user to login
@@ -42,79 +63,8 @@ Send your email address to connect your account.
 
 Example: `user@example.com`
 """
-    await update.message.reply_html(welcome_message)
+    await update.message.reply_html(welcome_message, reply_markup=get_login_keyboard())
     context.user_data['awaiting_email'] = True
-
-
-async def link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /link command to show Telegram connection status"""
-    user = update.effective_user
-    telegram_id = user.id
-    telegram_username = user.username or user.first_name
-    
-    # Check if user is logged in
-    gql_client = context.user_data.get('gql_client')
-    if not gql_client:
-        await update.message.reply_html(
-            "🔒 <b>Not Logged In</b>\n\n"
-            "Please use /start to login first.\n"
-            "Your Telegram account will be automatically linked during login."
-        )
-        return
-    
-    # Check current user's telegram link status
-    try:
-        check_query = """
-        query GetMe {
-            me {
-                id
-                name
-                email
-                telegramId
-            }
-        }
-        """
-        
-        result = await gql_client.execute(check_query)
-        if result and result.get('me'):
-            user_info = result['me']
-            
-            if user_info.get('telegramId'):
-                await update.message.reply_html(
-                    f"✅ <b>Already Connected!</b>\n\n"
-                    f"Your Telegram account is linked to:\n"
-                    f"👤 {user_info['name']}\n"
-                    f"📧 {user_info['email']}\n"
-                    f"🆔 Telegram ID: {user_info['telegramId']}\n\n"
-                    f"You'll receive event reminders and notifications here!"
-                )
-            else:
-                # Try to link now
-                link_mutation = """
-                mutation LinkTelegram($telegramId: Int!, $telegramUsername: String) {
-                    linkTelegram(telegramId: $telegramId, telegramUsername: $telegramUsername) {
-                        id
-                        telegramId
-                    }
-                }
-                """
-                await gql_client.execute(link_mutation, {
-                    "telegramId": telegram_id,
-                    "telegramUsername": telegram_username
-                })
-                
-                await update.message.reply_html(
-                    f"✅ <b>Telegram Connected!</b>\n\n"
-                    f"Your account has been linked.\n"
-                    f"You'll now receive notifications here!"
-                )
-            return
-    except Exception as e:
-        logger.error(f"Error checking link status: {e}")
-        await update.message.reply_text(
-            "❌ Error checking connection status. Please try /logout and login again."
-        )
-        return
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -135,14 +85,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 • Navigate days/weeks
 • Event type indicators
 
-/stats - Progress dashboard
-• Activity metrics
-• Switch time periods
-• Top skills breakdown
+/reminders - Manage reminders
+• View upcoming & overdue
+• Create new reminders
+• Mark as complete
 
 /notes - Recent notes
 • View last 5 notes
 • Quick preview
+
+/stats - Progress dashboard
+• Activity metrics
+• Switch time periods
+• Top skills breakdown
 
 **� File System:**
 
@@ -165,10 +120,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 **ℹ️ Other:**
 /start - Welcome
+/menu - Show command buttons
+/timezone - Set your timezone
 /help - This help
 /logout - Disconnect account
 
-💡 **Tip:** Use /session for everything related to learning sessions and skills!
+💡 **Tip:** Use /timezone to set your timezone for accurate reminder times!
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -192,8 +149,76 @@ async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_html(
         "👋 <b>Logged Out</b>\n\n"
         "You've been disconnected from your LifeTrack account.\n\n"
-        "Use /start to login again."
+        "Use /start to login again.",
+        reply_markup=get_login_keyboard()
     )
+
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show the command menu keyboard"""
+    if context.user_data.get('auth_token'):
+        await update.message.reply_html(
+            "📝 <b>Command Menu</b>\n\n"
+            "Use the buttons below to quickly access commands:",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        await update.message.reply_html(
+            "🔒 <b>Not Logged In</b>\n\n"
+            "Please use /start to login first.",
+            reply_markup=get_login_keyboard()
+        )
+
+
+async def timezone_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set or view user's timezone"""
+    if not context.user_data.get('auth_token'):
+        await update.message.reply_text("🔒 Please login first using /start")
+        return
+    
+    args = context.args
+    
+    if not args:
+        # Show current timezone
+        current_tz = context.user_data.get('timezone', 'UTC')
+        await update.message.reply_html(
+            f"🌍 <b>Your Timezone</b>\n\n"
+            f"Current: <code>{current_tz}</code>\n\n"
+            f"To change it, use:\n"
+            f"<code>/timezone America/New_York</code>\n\n"
+            f"Common timezones:\n"
+            f"• <code>America/New_York</code> (EST/EDT)\n"
+            f"• <code>America/Chicago</code> (CST/CDT)\n"
+            f"• <code>America/Los_Angeles</code> (PST/PDT)\n"
+            f"• <code>Europe/London</code> (GMT/BST)\n"
+            f"• <code>Europe/Paris</code> (CET/CEST)\n"
+            f"• <code>Asia/Tokyo</code> (JST)\n"
+            f"• <code>Australia/Sydney</code> (AEST/AEDT)\n"
+            f"• <code>Pacific/Auckland</code> (NZST/NZDT)"
+        )
+        return
+    
+    # Set timezone
+    tz_name = args[0]
+    try:
+        from zoneinfo import ZoneInfo
+        # Validate timezone
+        ZoneInfo(tz_name)
+        context.user_data['timezone'] = tz_name
+        
+        await update.message.reply_html(
+            f"✅ <b>Timezone Updated</b>\n\n"
+            f"Your timezone is now set to:\n"
+            f"<code>{tz_name}</code>\n\n"
+            f"This will be used for reminders and event times."
+        )
+    except Exception as e:
+        await update.message.reply_html(
+            f"❌ <b>Invalid Timezone</b>\n\n"
+            f"'{tz_name}' is not a valid timezone.\n\n"
+            f"Use format like: <code>America/New_York</code>\n"
+            f"Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
+        )
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -67,6 +67,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await handle_note_action(update, context, callback_data)
     elif callback_data.startswith("event:"):
         await handle_event_action(update, context, callback_data)
+    elif callback_data.startswith("reminder:"):
+        await handle_reminder_action(update, context, callback_data)
     else:
         await query.edit_message_text(f"Unknown action: {callback_data}")
 
@@ -1029,3 +1031,133 @@ async def delete_event(update: Update, context: ContextTypes.DEFAULT_TYPE, event
     except Exception as e:
         logger.error(f"Error deleting event: {e}", exc_info=True)
         await query.edit_message_text("❌ Error deleting event.")
+
+
+async def handle_reminder_action(update: Update, context: ContextTypes.DEFAULT_TYPE, callback_data: str) -> None:
+    """
+    Handle reminder-related callback actions
+    """
+    query = update.callback_query
+    gql_client = get_user_client(context)
+    
+    parts = callback_data.split(":")
+    action = parts[1] if len(parts) > 1 else None
+    
+    if action == "complete" and len(parts) > 2:
+        await complete_reminder(update, context, parts[2])
+    elif action == "create":
+        await query.edit_message_text(
+            "📝 **Create Reminder**\n\n"
+            "To create a reminder, send a message in this format:\n\n"
+            "`Title\n"
+            "Description (optional)\n"
+            "Due: 2026-02-20 14:30\n"
+            "Priority: HIGH`\n\n"
+            "Priority can be: LOW, MEDIUM, or HIGH",
+            parse_mode='Markdown'
+        )
+        context.user_data['awaiting_reminder'] = True
+    elif action == "all":
+        await show_all_reminders(update, context)
+    else:
+        await query.edit_message_text("❌ Unknown reminder action.")
+
+
+async def complete_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    """
+    Mark a reminder as complete
+    """
+    query = update.callback_query
+    gql_client = get_user_client(context)
+    
+    mutation = """
+    mutation CompleteReminder($id: UUID!) {
+        updateReminder(id: $id, input: {completed: true}) {
+            id
+            title
+            completed
+        }
+    }
+    """
+    
+    try:
+        result = await gql_client.execute(mutation, {'id': reminder_id})
+        reminder = result.get('updateReminder')
+        
+        if reminder:
+            await query.edit_message_text(
+                f"✅ **Reminder Completed**\n\n"
+                f"{reminder['title']}\n\n"
+                f"Use /reminders to view more.",
+                parse_mode='Markdown'
+            )
+        else:
+            await query.edit_message_text("❌ Failed to complete reminder.")
+    
+    except Exception as e:
+        logger.error(f"Error completing reminder: {e}", exc_info=True)
+        await query.edit_message_text("❌ Error completing reminder. Please try again.")
+
+
+async def show_all_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Show all reminders (completed and incomplete)
+    """
+    query = update.callback_query
+    gql_client = get_user_client(context)
+    
+    reminders_query = """
+    query GetAllReminders($limit: Int!) {
+        reminders(limit: $limit) {
+            nodes {
+                id
+                title
+                dueTime
+                completed
+                priority
+            }
+        }
+    }
+    """
+    
+    try:
+        from datetime import datetime
+        
+        result = await gql_client.execute(reminders_query, {'limit': 20})
+        reminders = result.get('reminders', {}).get('nodes', [])
+        
+        if not reminders:
+            await query.edit_message_text(
+                "📋 **No Reminders**\n\n"
+                "You don't have any reminders yet.\n\n"
+                "Use the button below to create one!",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Separate completed and incomplete
+        incomplete = [r for r in reminders if not r['completed']]
+        completed = [r for r in reminders if r['completed']]
+        
+        message = "📋 **All Reminders**\n\n"
+        
+        if incomplete:
+            message += "**Active:**\n"
+            for reminder in incomplete[:5]:
+                due_time = datetime.fromisoformat(reminder['dueTime'].replace('Z', '+00:00'))
+                priority_emoji = {'LOW': '🔵', 'MEDIUM': '🟡', 'HIGH': '🔴'}.get(reminder['priority'], '⚪')
+                message += f"{priority_emoji} {reminder['title']}\n"
+                message += f"   Due: {due_time.strftime('%b %d, %I:%M %p')}\n"
+        
+        if completed:
+            message += f"\n**Completed:** {len(completed)}\n"
+        
+        keyboard = [[InlineKeyboardButton("➕ Create Reminder", callback_data="reminder:create")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error showing all reminders: {e}", exc_info=True)
+        await query.edit_message_text("❌ Error loading reminders. Please try again.")
+

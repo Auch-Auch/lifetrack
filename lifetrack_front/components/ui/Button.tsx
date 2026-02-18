@@ -13,7 +13,7 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'primary', size = 'md', loading = false, children, className = '', disabled, ...props }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium transition-all duration-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-95'
+    const baseStyles = 'inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium transition-all duration-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-95 touch-manipulation'
     
     const variantStyles = {
       primary: 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary-hover))] focus-visible:ring-[hsl(var(--primary))]',
@@ -22,10 +22,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       danger: 'bg-[hsl(var(--danger))] text-[hsl(var(--danger-foreground))] hover:bg-[hsl(var(--danger-hover))] focus-visible:ring-[hsl(var(--danger))]'
     }
     
+    // Smaller buttons on mobile
     const sizeStyles = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2 text-base',
-      lg: 'px-6 py-3 text-lg'
+      sm: 'px-2.5 py-1.5 text-xs md:px-3 md:py-1.5 md:text-sm',
+      md: 'px-3 py-1.5 text-sm md:px-4 md:py-2 md:text-base',
+      lg: 'px-4 py-2 text-base md:px-6 md:py-3 md:text-lg'
     }
     
     return (

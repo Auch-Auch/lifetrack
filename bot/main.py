@@ -58,7 +58,7 @@ async def post_init(application: Application) -> None:
     asyncio.create_task(start_notification_loop(
         application.bot, 
         application.bot_data['active_users'], 
-        interval=60
+        interval=15  # Check every 15 seconds for better accuracy
     ))
     
     logger.info("Bot initialization complete (per-user auth with notifications)")
@@ -79,7 +79,8 @@ def main() -> None:
     # Register command handlers
     application.add_handler(CommandHandler("start", commands.start))
     application.add_handler(CommandHandler("help", commands.help_command))
-    application.add_handler(CommandHandler("link", commands.link))
+    application.add_handler(CommandHandler("menu", commands.menu))
+    application.add_handler(CommandHandler("timezone", commands.timezone_command))
     application.add_handler(CommandHandler("logout", commands.logout))
     
     # UI-based commands (new command-first approach)
@@ -87,6 +88,7 @@ def main() -> None:
     application.add_handler(CommandHandler("skills", ui_commands.skills))
     application.add_handler(CommandHandler("schedule", ui_commands.schedule))
     application.add_handler(CommandHandler("notes", ui_commands.notes_command))
+    application.add_handler(CommandHandler("reminders", ui_commands.reminders_command))
     application.add_handler(CommandHandler("stats", ui_commands.stats_command))
     
     # File system commands

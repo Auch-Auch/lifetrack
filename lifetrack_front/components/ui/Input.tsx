@@ -31,6 +31,7 @@ const Input = React.forwardRef<HTMLInputElement | HTMLTextAreaElement, Props>(
       transition-all duration-[var(--transition-fast)]
       focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.5)] focus:border-transparent
       disabled:opacity-50 disabled:cursor-not-allowed
+      touch-manipulation
       ${error ? 'border-[hsl(var(--danger))] focus:ring-[hsl(var(--danger))]' : ''}
       ${className}
     `
