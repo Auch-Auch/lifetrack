@@ -1,0 +1,37 @@
+[Unit]
+Description=LifeTrack Backend GraphQL API
+After=network-online.target lifetrack-postgres.service
+Wants=network-online.target
+BindsTo=lifetrack-postgres.service
+
+[Container]
+ContainerName=lifetrack_backend
+# Build the image first with: podman build -t lifetrack-backend:latest ./backend
+Image=localhost/lifetrack-backend:latest
+
+# Environment variables
+Environment=DATABASE_URL=postgres://%E{POSTGRES_USER}:%E{POSTGRES_PASSWORD}@lifetrack_postgres:5432/%E{POSTGRES_DB}?sslmode=disable
+Environment=JWT_SECRET=%E{JWT_SECRET}
+Environment=PORT=8080
+Environment=ENV=%E{ENV:-production}
+Environment=FILE_STORAGE_PATH=/data/files
+
+# Volumes
+Volume=%h/lifetrack/data/files:/data/files:z
+
+# Networking
+Network=lifetrack.network
+# Only expose port internally, not published to host
+
+# Health check
+HealthCmd=wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+
+[Service]
+Restart=unless-stopped
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

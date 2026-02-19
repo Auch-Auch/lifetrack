@@ -1,0 +1,32 @@
+[Unit]
+Description=LifeTrack Frontend Web Application
+After=network-online.target lifetrack-backend.service
+Wants=network-online.target
+BindsTo=lifetrack-backend.service
+
+[Container]
+ContainerName=lifetrack_frontend
+# Build the image first with: podman build -t lifetrack-frontend:latest --build-arg NEXT_PUBLIC_API_URL=/query ./lifetrack_front
+Image=localhost/lifetrack-frontend:latest
+
+# Environment variables
+Environment=NEXT_PUBLIC_API_URL=%E{NEXT_PUBLIC_API_URL:-/query}
+Environment=BACKEND_URL=http://lifetrack_backend:8080
+Environment=NODE_ENV=production
+
+# Networking
+Network=lifetrack.network
+# Only expose port internally, not published to host
+
+# Health check
+HealthCmd=wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+
+[Service]
+Restart=unless-stopped
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

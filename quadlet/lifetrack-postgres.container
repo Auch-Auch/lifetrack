@@ -1,0 +1,33 @@
+[Unit]
+Description=LifeTrack PostgreSQL Database
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=lifetrack_postgres
+Image=docker.io/library/postgres:16-alpine
+
+# Environment variables
+Environment=POSTGRES_DB=%E{POSTGRES_DB}
+Environment=POSTGRES_USER=%E{POSTGRES_USER}
+Environment=POSTGRES_PASSWORD=%E{POSTGRES_PASSWORD}
+
+# Volumes
+Volume=lifetrack_postgres_data.volume:/var/lib/postgresql/data
+
+# Networking
+Network=lifetrack.network
+PublishPort=5435:5432
+
+# Health check
+HealthCmd=pg_isready -U ${POSTGRES_USER}
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=unless-stopped
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

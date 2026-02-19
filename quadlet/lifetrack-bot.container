@@ -1,0 +1,37 @@
+[Unit]
+Description=LifeTrack Telegram Bot with LLM
+After=network-online.target lifetrack-backend.service
+Wants=network-online.target
+BindsTo=lifetrack-backend.service
+
+[Container]
+ContainerName=lifetrack_bot
+# Build the image first with: podman build -t lifetrack-bot:latest ./bot
+Image=localhost/lifetrack-bot:latest
+
+# Environment variables
+Environment=TELEGRAM_BOT_TOKEN=%E{TELEGRAM_BOT_TOKEN}
+Environment=BACKEND_URL=http://lifetrack_backend:8080/query
+Environment=SERVICE_JWT=%E{SERVICE_JWT}
+Environment=FILE_STORAGE_PATH=/data/files
+Environment=FILE_TEMP_PATH=/tmp/lifetrack_files
+
+# Volumes
+Volume=%h/lifetrack/models:/app/models:ro,z
+Volume=%h/lifetrack/backend/graph:/backend/graph:ro,z
+Volume=%h/lifetrack/bot/data:/app/data:z
+Volume=%h/lifetrack/data/files:/data/files:z
+
+# Networking
+Network=lifetrack.network
+
+# Resource limits (Qwen 2.5 Coder 7B model)
+Memory=8G
+MemoryReservation=5G
+
+[Service]
+Restart=unless-stopped
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

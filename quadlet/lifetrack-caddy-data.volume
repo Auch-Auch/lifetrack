@@ -1,0 +1,3 @@
+[Volume]
+# Caddy data volume
+VolumeName=lifetrack_caddy_data

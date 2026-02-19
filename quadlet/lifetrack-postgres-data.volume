@@ -1,0 +1,3 @@
+[Volume]
+# PostgreSQL data volume
+VolumeName=lifetrack_postgres_data

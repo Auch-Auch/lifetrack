@@ -1,0 +1,4 @@
+[Network]
+# Network for LifeTrack application services
+# Place this file in ~/.config/containers/systemd/ or /etc/containers/systemd/
+NetworkName=lifetrack_network
