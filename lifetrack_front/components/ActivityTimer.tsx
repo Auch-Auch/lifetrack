@@ -6,7 +6,7 @@ import Button from './ui/Button'
 import Input from './ui/Input'
 import { useActivityStore } from '@/stores/activityStore'
 import { useToast } from '@/stores/toastStore'
-import { calculateDuration, formatDuration } from '@/lib/activities'
+import { formatDurationWithSeconds } from '@/lib/activities'
 
 type Props = {
   skillId: string
@@ -29,11 +29,11 @@ export default function ActivityTimer({ skillId }: Props) {
     if (activeSession?.status === 'ACTIVE' && activeSession.startedAt) {
       // Update immediately
       const updateTime = () => {
-        const duration = calculateDuration(
-          activeSession.startedAt!,
-          activeSession.pausedDuration || 0
-        )
-        setElapsedTime(duration)
+        const now = Date.now()
+        const start = new Date(activeSession.startedAt!).getTime()
+        const pausedMs = activeSession.pausedDuration || 0
+        const elapsed = Math.max(0, Math.floor((now - start - pausedMs) / 1000)) // seconds, ensure non-negative
+        setElapsedTime(elapsed)
       }
       
       updateTime()
@@ -80,7 +80,7 @@ export default function ActivityTimer({ skillId }: Props) {
   
   const handleStop = () => {
     stopSession(notes.trim() || undefined)
-    toast.success(`Session completed! Duration: ${formatDuration(elapsedTime)}`)
+    toast.success(`Session completed! Duration: ${formatDurationWithSeconds(elapsedTime)}`)
     setActivityName('')
     setNotes('')
     setElapsedTime(0)
@@ -126,7 +126,7 @@ export default function ActivityTimer({ skillId }: Props) {
         <div className="space-y-4">
           <div className="text-center py-6 bg-[hsl(var(--muted)_/_0.5)] rounded-[var(--radius)]">
             <div className="text-4xl font-bold text-[hsl(var(--primary))] mb-2">
-              {formatDuration(elapsedTime)}
+              {formatDurationWithSeconds(elapsedTime)}
             </div>
             <div className="text-sm text-[hsl(var(--muted-foreground))]">
               {activeSession.name}

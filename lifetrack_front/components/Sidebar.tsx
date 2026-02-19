@@ -14,7 +14,7 @@ type Props = {
 type NavItem = {
   href: string
   label: string
-  icon: React.ComponentType<{ size?: number }>
+  icon: React.ComponentType<{ size?: number; className?: string }>
 }
 
 const navItems: NavItem[] = [

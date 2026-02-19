@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useActivityStore } from '@/stores/activityStore'
-import { formatDuration } from '@/lib/activities'
+import { formatDurationWithSeconds } from '@/lib/activities'
 import Button from './ui/Button'
 import { Pause, Square, Play } from 'lucide-react'
 
@@ -26,7 +26,7 @@ export default function LiveIndicator() {
       const now = Date.now()
       const start = new Date(activeSession.startedAt).getTime()
       const pausedMs = activeSession.pausedDuration || 0
-      const elapsed = Math.floor((now - start - pausedMs) / 1000) // seconds
+      const elapsed = Math.max(0, Math.floor((now - start - pausedMs) / 1000)) // seconds, ensure non-negative
       setElapsedTime(elapsed)
     }
 
@@ -95,7 +95,7 @@ export default function LiveIndicator() {
           {activeSession.name}
         </span>
         <span className="text-xs sm:text-sm font-mono text-[hsl(var(--muted-foreground))] flex-shrink-0">
-          {formatDuration(Math.floor(elapsedTime / 60))}
+          {formatDurationWithSeconds(elapsedTime)}
         </span>
       </div>
 
@@ -106,33 +106,33 @@ export default function LiveIndicator() {
             variant="ghost"
             size="sm"
             onClick={handleResume}
-            className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm"
+            className="h-8 px-3 text-xs sm:text-sm"
             title="Resume session"
           >
-            <Play size={14} className="sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline ml-1">Resume</span>
+            <Play size={16} />
+            <span className="ml-1">Resume</span>
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="sm"
             onClick={handlePause}
-            className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm"
+            className="h-8 px-3 text-xs sm:text-sm"
             title="Pause session"
           >
-            <Pause size={14} className="sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline ml-1">Pause</span>
+            <Pause size={16} />
+            <span className="ml-1">Pause</span>
           </Button>
         )}
         <Button
           variant="danger"
           size="sm"
           onClick={handleStop}
-          className="h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm"
+          className="h-8 px-3 text-xs sm:text-sm cursor-pointer"
           title="Stop and complete session"
         >
-          <Square size={14} className="sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline ml-1">Stop</span>
+          <Square size={16} className="fill-current" />
+          <span className="ml-1 font-semibold">Stop</span>
         </Button>
       </div>
     </div>

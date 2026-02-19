@@ -401,11 +401,28 @@ export function formatDuration(minutes: number): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
 
+export function formatDurationWithSeconds(seconds: number): string {
+  // Ensure non-negative
+  const totalSeconds = Math.max(0, seconds)
+  
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const secs = totalSeconds % 60
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`
+  } else if (minutes > 0) {
+    return `${minutes}m ${secs}s`
+  } else {
+    return `${secs}s`
+  }
+}
+
 export function calculateDuration(startedAt: string, pausedDuration: number = 0): number {
   const start = new Date(startedAt).getTime()
   const now = Date.now()
   const elapsed = now - start - pausedDuration
-  return Math.floor(elapsed / 1000 / 60) // Convert to minutes
+  return Math.max(0, Math.floor(elapsed / 1000 / 60)) // Convert to minutes, ensure non-negative
 }
 
 export function getTodayDate(): string {
