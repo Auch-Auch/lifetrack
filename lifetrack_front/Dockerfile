@@ -10,8 +10,8 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (using --legacy-peer-deps to handle test dependencies)
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
