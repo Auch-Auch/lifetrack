@@ -19,17 +19,17 @@
 
     # Backend GraphQL API (must come before /* catch-all)
     handle /query* {
-        reverse_proxy backend:8080
+        reverse_proxy lifetrack_backend:8080
     }
 
     # File downloads
     handle /files/download/* {
-        reverse_proxy backend:8080
+        reverse_proxy lifetrack_backend:8080
     }
 
     # Health check endpoint
     handle /health* {
-        reverse_proxy backend:8080
+        reverse_proxy lifetrack_backend:8080
     }
 
     # Disable GraphQL Playground in production
@@ -40,7 +40,7 @@
 
     # Frontend (catch-all, must be last)
     handle /* {
-        reverse_proxy frontend:3000
+        reverse_proxy lifetrack_frontend:3000
     }
 
     # Note: Rate limiting requires a custom Caddy build with the rate_limit plugin
